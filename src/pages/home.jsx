@@ -23,20 +23,24 @@ import { useCategoryOptions } from "../hooks/useCategoryOptions";
 import Logo from "../components/Logo";
 // Import asset images for fallbacks
 import chickenImg from "../assets/chicken.png";
-import chicken2Img from "../assets/chicken2.png";
+import turkeyImg from "../assets/turkey.png";
 import slideImg1 from "../assets/pexels-james-collington-2147687246-29771450.jpg";
 import slideImg2 from "../assets/pexels-james-collington-2147687246-29771458.jpg";
 import slideImg3 from "../assets/pexels-photocorp-20867250.jpg";
 
 // Fallback images arrays
 const SLIDE_FALLBACKS = [slideImg1, slideImg2, slideImg3];
-const LISTING_FALLBACKS = [chickenImg, chicken2Img];
 
 function getFallbackImage(category, index = 0, type = "listing") {
   if (type === "slide") {
     return SLIDE_FALLBACKS[index % SLIDE_FALLBACKS.length] || SLIDE_FALLBACKS[0];
   }
-  return LISTING_FALLBACKS[index % LISTING_FALLBACKS.length] || LISTING_FALLBACKS[0];
+  // Use category-specific images
+  const normalized = String(category || "").toLowerCase();
+  if (normalized.includes("dinde") || normalized.includes("turkey")) {
+    return turkeyImg;
+  }
+  return chickenImg; // Default to chicken for Poulet
 }
 
 function withAlpha(color, alpha) {
@@ -1053,10 +1057,13 @@ export default function Home() {
 
                   return (
                     <div
-                      key={l.id}
+                      key={l.id || l._id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => navigate(`/listing/${l.id}`)}
+                      onClick={() => {
+                        const listingId = l.id || l._id;
+                        if (listingId) navigate(`/listing/${listingId}`);
+                      }}
                       className="listing-card group cursor-pointer"
                       style={{
                         borderLeft: `4px solid ${itemAccent}`,
@@ -1251,7 +1258,10 @@ export default function Home() {
                                   }}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigate(`/listing/${l.id}`);
+                                    const listingId = l.id || l._id;
+                                    if (listingId) {
+                                      navigate(`/listing/${listingId}`);
+                                    }
                                   }}
                                 >
                                   {t("interested") ||

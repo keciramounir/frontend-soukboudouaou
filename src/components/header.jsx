@@ -22,6 +22,18 @@ export default function Header() {
   const { t, language, setLanguage, rtl } = useTranslation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  
+  // Get user from localStorage if not in context (for mock mode)
+  const currentUser = user || (() => {
+    try {
+      const stored = localStorage.getItem("user");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  })();
+  
+  const displayName = currentUser?.fullName || currentUser?.name || t("user");
 
   // Handle scroll effect
   useEffect(() => {
@@ -43,8 +55,6 @@ export default function Header() {
     if (language === "fr") setLanguage("ar");
     else setLanguage("fr");
   };
-
-  const displayName = user?.fullName || user?.name || t("user");
 
   return (
     <>
@@ -137,7 +147,7 @@ export default function Header() {
               {/* Create Listing Button */}
               <button
                 onClick={() => {
-                  if (user) navigate("/create-listing");
+                  if (currentUser) navigate("/create-listing");
                   else navigate("/auth");
                 }}
                 className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:opacity-90"
@@ -150,7 +160,7 @@ export default function Header() {
               {/* Mobile Create Icon */}
               <button
                 onClick={() => {
-                  if (user) navigate("/create-listing");
+                  if (currentUser) navigate("/create-listing");
                   else navigate("/auth");
                 }}
                 className="sm:hidden p-2 rounded-lg hover:bg-slate-200/50 dark:hover:bg-white/10 transition-all"
@@ -181,13 +191,13 @@ export default function Header() {
                 <button
                   className="flex items-center gap-2 p-1 sm:pl-2 sm:pr-2 sm:py-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:border-[var(--category-accent)] transition-all bg-slate-50 dark:bg-white/5"
                   onClick={() =>
-                    user ? setUserMenuOpen(!userMenuOpen) : navigate("/auth")
+                    currentUser ? setUserMenuOpen(!userMenuOpen) : navigate("/auth")
                   }
                 >
                   <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[var(--category-accent)] flex items-center justify-center text-white text-xs font-bold uppercase">
-                    {user ? displayName.charAt(0) : "?"}
+                    {currentUser ? displayName.charAt(0) : "?"}
                   </div>
-                  {user && (
+                  {currentUser && (
                     <>
                       <span className="hidden lg:inline font-semibold text-sm">
                         {displayName}
@@ -200,7 +210,7 @@ export default function Header() {
                   )}
                 </button>
 
-                {user && userMenuOpen && (
+                {currentUser && userMenuOpen && (
                   <div
                     className={`
                       absolute right-0 mt-2 w-64 rounded-xl shadow-2xl
@@ -221,14 +231,19 @@ export default function Header() {
                         {displayName}
                       </div>
                       <div className="text-xs opacity-60 truncate mt-0.5">
-                        {user.email || user.username}
+                        {currentUser?.email || currentUser?.username}
                       </div>
                     </div>
 
                     <div className="py-1">
                       <button
                         onClick={() => {
-                          navigate("/admin/my-account");
+                          const role = currentUser?.role || "";
+                          if (role === "ADMIN" || role === "super_admin") {
+                            navigate("/admin/my-account");
+                          } else {
+                            navigate("/profile");
+                          }
                           setUserMenuOpen(false);
                         }}
                         className="flex items-center gap-3 w-full text-left px-4 py-2.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors text-sm"
@@ -237,9 +252,9 @@ export default function Header() {
                         {t("myAccount") || "Mon compte"}
                       </button>
 
-                      {(user.role === "user" ||
-                        user.role === "ADMIN" ||
-                        user.role === "super_admin") && (
+                      {(currentUser?.role === "user" ||
+                        currentUser?.role === "ADMIN" ||
+                        currentUser?.role === "super_admin") && (
                         <button
                           onClick={() => {
                             navigate("/admin");

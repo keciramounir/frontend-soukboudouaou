@@ -39,24 +39,6 @@ const DEFAULT_CATEGORIES = [
     translationKey: "cat_turkey",
     visible: true,
   },
-  {
-    id: "poussins",
-    value: "Poussins",
-    labels: { fr: "Poussins", en: "Chicks", ar: "كتاكيت" },
-    accent: "#2563eb",
-    icon: "Ps",
-    translationKey: "cat_chicks",
-    visible: true,
-  },
-  {
-    id: "oeufs",
-    value: "Oeufs",
-    labels: { fr: "Oeufs", en: "Eggs", ar: "بيض" },
-    accent: "#0ea5e9",
-    icon: "O",
-    translationKey: "cat_eggs",
-    visible: true,
-  },
 ];
 
 const CategoryContext = createContext(null);
@@ -93,9 +75,19 @@ function loadInitialCategories() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed
+        const loaded = parsed
           .map((c, idx) => ensureCategoryShape(c, idx))
           .filter(Boolean);
+        // Filter to only Poulet and Dinde, and ensure they exist
+        const filtered = loaded.filter(c => 
+          normalizeCategoryValue(c.value) === "Poulet" || 
+          normalizeCategoryValue(c.value) === "Dinde"
+        );
+        // If we don't have both categories, use defaults
+        if (filtered.length < 2) {
+          return DEFAULT_CATEGORIES;
+        }
+        return filtered;
       }
     }
   } catch {

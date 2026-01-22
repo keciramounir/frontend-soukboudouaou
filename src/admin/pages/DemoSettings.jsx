@@ -15,6 +15,7 @@ export default function DemoSettings() {
   const isSuperAdmin = user?.role === "super_admin";
   const [mockListings, setMockListings] = useState(isMockListingsEnabled());
   const [mockUsers, setMockUsers] = useState(isMockUsersEnabled());
+  const [adminMode, setAdminMode] = useState(localStorage.getItem("mock_admin_mode") === "1");
 
   if (!isSuperAdmin) {
     return (
@@ -97,6 +98,36 @@ export default function DemoSettings() {
             {mockUsers
               ? t("mockDisable") || "Désactiver"
               : t("mockEnable") || "Activer"}
+          </button>
+        </div>
+
+        <div className="h-px bg-[var(--color-border)]" />
+
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-semibold">
+              {t("adminMode") || "Mode Admin"}
+            </div>
+            <div className="text-sm opacity-70">
+              {t("adminModeHint") || "Activer le mode admin pour le compte par défaut (imad@soukboudouaou.com). Déconnexion requise."}
+            </div>
+          </div>
+          <button
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              adminMode
+                ? "bg-blue-600 hover:bg-blue-700 text-white"
+                : "bg-gray-600 hover:bg-gray-700 text-white"
+            }`}
+            onClick={() => {
+              const next = !adminMode;
+              setAdminMode(next);
+              localStorage.setItem("mock_admin_mode", next ? "1" : "0");
+              alert(t("adminModeChanged") || "Mode admin changé. Veuillez vous déconnecter et vous reconnecter.");
+            }}
+          >
+            {adminMode
+              ? t("adminModeActive") || "Actif"
+              : t("adminModeInactive") || "Inactif"}
           </button>
         </div>
 

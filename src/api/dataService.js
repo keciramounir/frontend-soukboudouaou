@@ -6,15 +6,31 @@ import mockAdminUsers from "../mocks/adminUsers.json";
 import mockAuditClicks from "../mocks/auditClicks.json";
 import listingsMockFile from "../mocks/listings.json";
 import myListingsMockFile from "../mocks/myListings.json";
+// Import asset images for mock listings
+import chickenImg from "../assets/chicken.png";
+import turkeyImg from "../assets/turkey.png";
+import { safeGetItem, safeSetItem } from "../utils/localStorage";
 
 // Get API origin from environment variable (without /api suffix)
 // This is used for image URLs and other direct backend URLs
 export const API_ORIGIN = (import.meta.env.VITE_API_URL || "")
   .replace(/\/api$/, "")
   .replace(/\/+$/, "");
-const ENV_MOCK = import.meta.env.VITE_USE_MOCK === "1";
-const ENV_MOCK_LISTINGS = import.meta.env.VITE_USE_MOCK_LISTINGS === "1";
-const ENV_MOCK_USERS = import.meta.env.VITE_USE_MOCK_USERS === "1";
+// Enable mock mode by default for demo
+// Check localStorage first, then env vars, then default to enabled in dev
+const getMockSetting = (key, envKey) => {
+  const stored = localStorage.getItem(key);
+  if (stored === "1") return true;
+  if (stored === "0") return false;
+  if (import.meta.env[envKey] === "1") return true;
+  if (import.meta.env[envKey] === "0") return false;
+  // Default to enabled in dev mode for demo
+  return import.meta.env.DEV;
+};
+
+const ENV_MOCK = getMockSetting("use_mock", "VITE_USE_MOCK");
+const ENV_MOCK_LISTINGS = getMockSetting("use_mock_listings", "VITE_USE_MOCK_LISTINGS");
+const ENV_MOCK_USERS = getMockSetting("use_mock_users", "VITE_USE_MOCK_USERS");
 const THROW_ON_API_PREFIX = import.meta.env.DEV;
 
 function apiPath(path) {
@@ -95,66 +111,85 @@ let MOCK_USER = structuredClone(userMockFile.user);
 function defaultListingImage(category) {
   const normalized = String(category || "").toLowerCase();
 
-  // Use specific static placeholders or a reliable service
-  // Unsplash source is deprecated/unreliable
-  if (normalized.includes("oeuf"))
-    return "https://loremflickr.com/800/600/eggs,food/all";
-  if (normalized.includes("poussin") || normalized.includes("chick"))
-    return "https://loremflickr.com/800/600/chick,baby-chicken/all";
+  // Use assets folder icons (imported as modules)
+  // Poulet → chicken.png, Dinde → turkey.png
   if (normalized.includes("dinde") || normalized.includes("turkey"))
-    return "https://loremflickr.com/800/600/turkey,bird/all";
+    return turkeyImg;
+  if (normalized.includes("poulet") || normalized.includes("chicken"))
+    return chickenImg;
 
-  // Default Chicken
-  return "https://loremflickr.com/800/600/chicken,poultry/all";
+  // Default to chicken icon
+  return chickenImg;
 }
 
 function loadMockListings() {
-  const stored = localStorage.getItem("mock_listings");
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored);
-      if (parsed?.data?.listings) {
-        parsed.data.listings = parsed.data.listings.map((l, idx) => ({
-          id: l.id || l._id || `mock-${idx + 1}`,
-          ...l,
-        }));
+  const stored = safeGetItem("mock_listings");
+  if (stored && stored?.data?.listings) {
+    stored.data.listings = stored.data.listings.map((l, idx) => {
+      const listing = {
+        id: l.id || l._id || `mock-${idx + 1}`,
+        ...l,
+      };
+      // Replace image placeholders with actual imported images
+      if (listing.images && Array.isArray(listing.images)) {
+        listing.images = listing.images.map(img => {
+          if (img === "chicken.png" || img === "chicken") return chickenImg;
+          if (img === "turkey.png" || img === "turkey" || img === "chicken2.png") return turkeyImg;
+          return img;
+        });
+      } else if (!listing.images) {
+        listing.images = [defaultListingImage(listing.category)];
       }
-      return parsed;
-    } catch {
-      // ignore
-    }
+      return listing;
+    });
+    return stored;
   }
   const cloned = structuredClone(listingsMockFile);
   if (cloned?.data?.listings) {
-    cloned.data.listings = cloned.data.listings.map((l, idx) => ({
-      id: l.id || l._id || `mock-${idx + 1}`,
-      ...l,
-    }));
+    cloned.data.listings = cloned.data.listings.map((l, idx) => {
+      const listing = {
+        id: l.id || l._id || `mock-${idx + 1}`,
+        ...l,
+      };
+      // Replace image placeholders with actual imported images
+      if (listing.images && Array.isArray(listing.images)) {
+        listing.images = listing.images.map(img => {
+          if (img === "chicken.png" || img === "chicken") return chickenImg;
+          if (img === "turkey.png" || img === "turkey" || img === "chicken2.png") return turkeyImg;
+          return img;
+        });
+      } else if (!listing.images) {
+        listing.images = [defaultListingImage(listing.category)];
+      }
+      return listing;
+    });
   }
   return cloned;
 }
 
 function saveMockListings(listings) {
   const payload = { success: true, data: { listings } };
-  localStorage.setItem("mock_listings", JSON.stringify(payload));
+  const saved = safeSetItem("mock_listings", payload);
+  if (!saved) {
+    console.error("Failed to save listings to localStorage");
+  }
   return payload;
 }
 
 function loadMockMyListings() {
-  const stored = localStorage.getItem("mock_my_listings");
+  const stored = safeGetItem("mock_my_listings");
   if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch {
-      // ignore
-    }
+    return stored;
   }
   return structuredClone(myListingsMockFile);
 }
 
 function saveMockMyListings(listings) {
   const payload = { success: true, data: listings };
-  localStorage.setItem("mock_my_listings", JSON.stringify(payload));
+  const saved = safeSetItem("mock_my_listings", payload);
+  if (!saved) {
+    console.error("Failed to save my listings to localStorage");
+  }
   return payload;
 }
 
@@ -250,6 +285,24 @@ export async function createListing(fd) {
     const entries = Object.fromEntries(fd.entries());
     const category = entries.category || "Poulet";
     const id = `mock-${Date.now()}`;
+    
+    // Handle images - if files are provided, create object URLs, otherwise use default
+    let images = [defaultListingImage(category)];
+    if (fd instanceof FormData) {
+      const imageFiles = [];
+      // Check for photo files (could be photo, photos, image, images, etc.)
+      for (const [key, value] of fd.entries()) {
+        if ((key.includes("photo") || key.includes("image")) && value instanceof File) {
+          imageFiles.push(value);
+        }
+      }
+      
+      if (imageFiles.length > 0) {
+        // Create object URLs for the files
+        images = imageFiles.map(file => URL.createObjectURL(file));
+      }
+    }
+    
     const listing = {
       id,
       _id: id,
@@ -259,7 +312,7 @@ export async function createListing(fd) {
       pricePerKg: Number(entries.pricePerKg || entries.price || 0) || 0,
       unit: entries.unit || "kg",
       createdAt: new Date().toISOString(),
-      status: entries.status || "published",
+      status: entries.status || "published" || "available",
       category,
       wilaya: entries.wilaya || "",
       commune: entries.commune || "",
@@ -269,8 +322,12 @@ export async function createListing(fd) {
       trainingType: entries.trainingType || "",
       medicationsUsed: entries.medicationsUsed || "",
       vaccinated: entries.vaccinated === "true" || entries.vaccinated === true,
-      images: [defaultListingImage(category)],
+      images,
       views: 0,
+      inquiries: 0,
+      quantity: Number(entries.quantity || 0) || 0,
+      delivery: entries.delivery === "true" || entries.delivery === true,
+      averageWeight: Number(entries.averageWeight || 0) || 0,
     };
     const next = [listing, ...listings];
     saveMockListings(next);
@@ -295,7 +352,13 @@ export async function updateListing(id, fd) {
     if (entries.description || entries.details) {
       next.description = entries.description || entries.details;
     }
-    if (entries.category) next.category = entries.category;
+    if (entries.category) {
+      next.category = entries.category;
+      // Update image if category changed and no new image uploaded
+      if (!entries.photo && !entries.image) {
+        next.images = [defaultListingImage(entries.category)];
+      }
+    }
     if (entries.wilaya) next.wilaya = entries.wilaya;
     if (entries.commune) next.commune = entries.commune;
     if (entries.pricePerKg || entries.price) {
@@ -314,8 +377,34 @@ export async function updateListing(id, fd) {
       next.vaccinated =
         entries.vaccinated === "true" || entries.vaccinated === true;
     }
+    
+    // Handle image updates
+    if (fd instanceof FormData) {
+      const imageFiles = [];
+      for (const [key, value] of fd.entries()) {
+        if ((key.includes("photo") || key.includes("image")) && value instanceof File) {
+          imageFiles.push(value);
+        }
+      }
+      if (imageFiles.length > 0) {
+        next.images = imageFiles.map(file => URL.createObjectURL(file));
+      }
+    }
+    
     listings[idx] = next;
     saveMockListings(listings);
+    
+    // Also update my listings if title changed
+    if (entries.title) {
+      const myBase = loadMockMyListings();
+      const myListings = myBase?.data || [];
+      const myIdx = myListings.findIndex((l) => String(l._id || l.id) === String(id));
+      if (myIdx !== -1) {
+        myListings[myIdx] = { ...myListings[myIdx], title: entries.title };
+        saveMockMyListings(myListings);
+      }
+    }
+    
     return { success: true, data: { listing: next } };
   }
   const res = await api.put(apiPath(`/listings/${id}`), fd);
@@ -365,6 +454,17 @@ export async function setListingStatus(id, status) {
     if (idx === -1) return { success: false, message: "Not found" };
     listings[idx] = { ...listings[idx], status };
     saveMockListings(listings);
+    
+    // Also update in my listings if it exists there
+    const myBase = loadMockMyListings();
+    const myListings = myBase?.data || [];
+    const myIdx = myListings.findIndex((l) => String(l._id || l.id) === String(id));
+    if (myIdx !== -1) {
+      // Update status in my listings if needed
+      myListings[myIdx] = { ...myListings[myIdx], status };
+      saveMockMyListings(myListings);
+    }
+    
     return { success: true, data: { listing: listings[idx] } };
   }
   const res = await api.patch(apiPath(`/listings/${id}/status`), { status });
@@ -376,14 +476,31 @@ export async function setListingStatus(id, status) {
    ========================= */
 
 export async function getProfile() {
+  if (isMockEnabled()) {
+    const saved = localStorage.getItem("user");
+    if (saved) {
+      try {
+        return { success: true, user: JSON.parse(saved) };
+      } catch {
+        // ignore parse error
+      }
+    }
+    return { success: true, user: MOCK_USER };
+  }
+  
   try {
     const res = await api.get(apiPath("/dashboard/user"));
     return res.data;
   } catch (e) {
     console.error("getProfile error:", e);
     const saved = localStorage.getItem("user");
-    if (saved) return { success: true, user: JSON.parse(saved) };
-    if (isMockEnabled()) return { success: true, user: MOCK_USER };
+    if (saved) {
+      try {
+        return { success: true, user: JSON.parse(saved) };
+      } catch {
+        // ignore parse error
+      }
+    }
     return { success: false };
   }
 }
@@ -420,8 +537,7 @@ export async function createInquiry(slugOrId, body) {
     );
     return res.data;
   }
-  const stored = localStorage.getItem("mock_inquiries");
-  const all = stored ? JSON.parse(stored) : [];
+  const all = safeGetItem("mock_inquiries", []);
   const inquiry = {
     id: `iq${Date.now()}`,
     listingId: String(slugOrId),
@@ -436,7 +552,13 @@ export async function createInquiry(slugOrId, body) {
     listing: null,
   };
   all.unshift(inquiry);
-  localStorage.setItem("mock_inquiries", JSON.stringify(all));
+  const saved = safeSetItem("mock_inquiries", all);
+  if (!saved) {
+    return {
+      success: false,
+      message: "Impossible de sauvegarder. Espace de stockage insuffisant."
+    };
+  }
   return { success: true, data: { inquiry } };
 }
 
@@ -445,8 +567,7 @@ export async function adminGetInquiries(params) {
     const res = await api.get(apiPath("/admin/inquiries"), { params });
     return res.data;
   }
-  const stored = localStorage.getItem("mock_inquiries");
-  const all = stored ? JSON.parse(stored) : [];
+  const all = safeGetItem("mock_inquiries", []);
   return {
     success: true,
     data: {
@@ -525,13 +646,57 @@ export async function adminSetListingStatus(id, status) {
 }
 
 export async function getAdminUsers(params) {
-  if (!isMockUsersEnabled()) {
-    const res = await api.get(apiPath("/admin/users"), { params });
-    return res.data;
+  if (isMockUsersEnabled()) {
+    // Combine default admin users with signup users
+    const base = safeGetItem("mock_admin_users", mockAdminUsers);
+    const defaultUsers = base?.data?.users || [];
+    
+    // Get signup users from localStorage
+    const signupUsers = safeGetItem("mock_users", []);
+    const signupUsersFormatted = signupUsers.map((u, idx) => ({
+      id: (defaultUsers.length || 0) + idx + 1,
+      email: u.email,
+      username: u.username,
+      fullName: u.fullName || u.username,
+      role: u.role || "user",
+      isActive: u.isActive !== false,
+      verified: u.verified || false,
+      createdAt: u.createdAt || new Date().toISOString(),
+    }));
+    
+    // Combine all users
+    const allUsers = [...defaultUsers, ...signupUsersFormatted];
+    
+    // Apply filters
+    let filtered = allUsers;
+    if (params?.q) {
+      const query = params.q.toLowerCase();
+      filtered = filtered.filter(u => 
+        u.email?.toLowerCase().includes(query) ||
+        u.username?.toLowerCase().includes(query) ||
+        u.fullName?.toLowerCase().includes(query)
+      );
+    }
+    if (params?.role) {
+      filtered = filtered.filter(u => u.role === params.role);
+    }
+    if (params?.isActive !== undefined) {
+      filtered = filtered.filter(u => u.isActive === params.isActive);
+    }
+    
+    return {
+      success: true,
+      data: {
+        users: filtered,
+        total: filtered.length,
+        page: params?.page || 1,
+        limit: params?.limit || 50,
+      },
+    };
   }
-  const stored = localStorage.getItem("mock_admin_users");
-  if (stored) return JSON.parse(stored);
-  return mockAdminUsers;
+  
+  const res = await api.get(apiPath("/admin/users"), { params });
+  return res.data;
 }
 
 export async function adminCreateUser(body) {
@@ -539,8 +704,7 @@ export async function adminCreateUser(body) {
     const res = await api.post(apiPath("/admin/users"), body);
     return res.data;
   }
-  const stored = localStorage.getItem("mock_admin_users");
-  const base = stored ? JSON.parse(stored) : mockAdminUsers;
+  const base = safeGetItem("mock_admin_users", mockAdminUsers);
   const users = base?.data?.users || [];
   const nextId = users.reduce((m, u) => Math.max(m, Number(u.id) || 0), 0) + 1;
   const user = {
@@ -558,7 +722,10 @@ export async function adminCreateUser(body) {
     ...base,
     data: { ...(base.data || {}), users: [user, ...users] },
   };
-  localStorage.setItem("mock_admin_users", JSON.stringify(next));
+  const saved = safeSetItem("mock_admin_users", next);
+  if (!saved) {
+    return { success: false, message: "Impossible de sauvegarder. Espace de stockage insuffisant." };
+  }
   return { success: true, data: { user } };
 }
 
@@ -567,14 +734,16 @@ export async function adminUpdateUser(id, body) {
     const res = await api.patch(apiPath(`/admin/users/${id}`), body);
     return res.data;
   }
-  const stored = localStorage.getItem("mock_admin_users");
-  const base = stored ? JSON.parse(stored) : mockAdminUsers;
+  const base = safeGetItem("mock_admin_users", mockAdminUsers);
   const users = base?.data?.users || [];
   const idx = users.findIndex((u) => Number(u.id) === Number(id));
   if (idx === -1) return { success: false, message: "Not found" };
   users[idx] = { ...users[idx], ...body };
   const next = { ...base, data: { ...(base.data || {}), users } };
-  localStorage.setItem("mock_admin_users", JSON.stringify(next));
+  const saved = safeSetItem("mock_admin_users", next);
+  if (!saved) {
+    return { success: false, message: "Impossible de sauvegarder. Espace de stockage insuffisant." };
+  }
   return { success: true, data: { user: users[idx] } };
 }
 
@@ -583,12 +752,14 @@ export async function adminDeleteUser(id) {
     const res = await api.delete(apiPath(`/admin/users/${id}`));
     return res.data;
   }
-  const stored = localStorage.getItem("mock_admin_users");
-  const base = stored ? JSON.parse(stored) : mockAdminUsers;
+  const base = safeGetItem("mock_admin_users", mockAdminUsers);
   const users = base?.data?.users || [];
   const nextUsers = users.filter((u) => Number(u.id) !== Number(id));
   const next = { ...base, data: { ...(base.data || {}), users: nextUsers } };
-  localStorage.setItem("mock_admin_users", JSON.stringify(next));
+  const saved = safeSetItem("mock_admin_users", next);
+  if (!saved) {
+    return { success: false, message: "Impossible de sauvegarder. Espace de stockage insuffisant." };
+  }
   return { success: true };
 }
 
@@ -606,33 +777,82 @@ export const DEFAULT_MOVING_HEADER_FONT_CONFIG = {
 };
 
 export async function getMovingHeaderSettings() {
+  if (isMockEnabled()) {
+    return loadLocalMovingHeader();
+  }
+  
   try {
     const res = await api.get(apiPath("/public/site/moving-header"));
     return res.data;
   } catch (err) {
-    // Silently fallback to default
-    return {
-      success: true,
-      data: { items: [], fontConfig: DEFAULT_MOVING_HEADER_FONT_CONFIG },
-    };
+    // Silently fallback to local storage
+    return loadLocalMovingHeader();
   }
 }
 
 export async function getAdminMovingHeaderSettings() {
+  if (isMockEnabled()) {
+    return loadLocalMovingHeader();
+  }
+  
   try {
     const res = await api.get(apiPath("/admin/site/moving-header"));
     return res.data;
   } catch {
-    return {
-      success: true,
-      data: { items: [], fontConfig: DEFAULT_MOVING_HEADER_FONT_CONFIG },
-    };
+    return loadLocalMovingHeader();
   }
 }
 
+const MOVING_HEADER_KEY = "site_moving_header_v1";
+
+function loadLocalMovingHeader() {
+  const stored = safeGetItem(MOVING_HEADER_KEY);
+  if (stored) return stored;
+  return {
+    success: true,
+    data: {
+      items: [],
+      fontConfig: DEFAULT_MOVING_HEADER_FONT_CONFIG,
+    },
+  };
+}
+
+function saveLocalMovingHeader(payload) {
+  const saved = safeSetItem(MOVING_HEADER_KEY, payload);
+  if (!saved) {
+    console.error("Failed to save moving header settings");
+  }
+  return payload;
+}
+
 export async function updateMovingHeaderSettings(payload) {
-  const res = await api.put(apiPath("/admin/site/moving-header"), payload);
-  return res.data;
+  if (isMockEnabled()) {
+    const next = {
+      success: true,
+      data: {
+        items: payload?.items || payload?.data?.items || [],
+        fontConfig: payload?.fontConfig || payload?.data?.fontConfig || DEFAULT_MOVING_HEADER_FONT_CONFIG,
+      },
+    };
+    saveLocalMovingHeader(next);
+    return next;
+  }
+  
+  try {
+    const res = await api.put(apiPath("/admin/site/moving-header"), payload);
+    return res.data;
+  } catch {
+    // Fallback to localStorage
+    const next = {
+      success: true,
+      data: {
+        items: payload?.items || payload?.data?.items || [],
+        fontConfig: payload?.fontConfig || payload?.data?.fontConfig || DEFAULT_MOVING_HEADER_FONT_CONFIG,
+      },
+    };
+    saveLocalMovingHeader(next);
+    return next;
+  }
 }
 
 const HERO_KEY = "site_hero_slides_v1";
@@ -676,6 +896,21 @@ export async function adminGetHeroSlides() {
 }
 
 export async function adminAddHeroSlide({ file, durationSeconds }) {
+  if (isMockEnabled()) {
+    const base = loadLocalHeroSlides();
+    const slides = base?.data?.slides || [];
+    const url = URL.createObjectURL(file);
+    const next = {
+      id: `hero-${Date.now()}`,
+      url,
+      durationMs: (durationSeconds ?? 5) * 1000,
+      durationSeconds: durationSeconds ?? 5,
+    };
+    const payload = { success: true, data: { slides: [...slides, next] } };
+    saveLocalHeroSlides(payload);
+    return payload;
+  }
+  
   const fd = new FormData();
   fd.append("photo", file);
   fd.append("durationSeconds", String(durationSeconds ?? 5));
@@ -697,6 +932,19 @@ export async function adminAddHeroSlide({ file, durationSeconds }) {
 }
 
 export async function adminUpdateHeroSlides(payload) {
+  if (isMockEnabled()) {
+    const slides = payload?.slides || payload?.data?.slides || [];
+    // Ensure slides have durationMs
+    const normalizedSlides = slides.map(s => ({
+      ...s,
+      durationMs: s.durationMs || (s.durationSeconds ? s.durationSeconds * 1000 : 6000),
+      durationSeconds: s.durationSeconds || (s.durationMs ? s.durationMs / 1000 : 6),
+    }));
+    const next = { success: true, data: { slides: normalizedSlides } };
+    saveLocalHeroSlides(next);
+    return next;
+  }
+  
   try {
     const res = await api.put(apiPath("/admin/site/hero-slides"), payload);
     return res.data;
@@ -797,6 +1045,46 @@ export async function adminGetCtaSettings() {
 }
 
 export async function adminUpdateCtaSettings(payload) {
+  if (isMockEnabled()) {
+    const current = loadLocalCta();
+    const next = { ...current };
+    
+    const isFormData =
+      typeof FormData !== "undefined" && payload instanceof FormData;
+    
+    if (isFormData) {
+      // Handle FormData - extract text fields and handle image
+      const imageFile = payload.get("image") || payload.get("imageUrl");
+      if (imageFile instanceof File) {
+        next.imageUrl = URL.createObjectURL(imageFile);
+      }
+      
+      // Extract text fields from FormData
+      const titleFr = payload.get("titleFr");
+      const titleAr = payload.get("titleAr");
+      const subtitleFr = payload.get("subtitleFr");
+      const subtitleAr = payload.get("subtitleAr");
+      const buttonFr = payload.get("buttonFr");
+      const buttonAr = payload.get("buttonAr");
+      const link = payload.get("link");
+      
+      if (titleFr) next.titleFr = titleFr;
+      if (titleAr) next.titleAr = titleAr;
+      if (subtitleFr) next.subtitleFr = subtitleFr;
+      if (subtitleAr) next.subtitleAr = subtitleAr;
+      if (buttonFr) next.buttonFr = buttonFr;
+      if (buttonAr) next.buttonAr = buttonAr;
+      if (link) next.link = link;
+    } else {
+      // Handle JSON payload
+      const ctaData = payload?.cta || payload || {};
+      Object.assign(next, ctaData);
+    }
+    
+    saveLocalCta(next);
+    return { success: true, data: { cta: next } };
+  }
+  
   const isFormData =
     typeof FormData !== "undefined" && payload instanceof FormData;
   try {
@@ -914,6 +1202,31 @@ export async function adminGetLogoSettings() {
 }
 
 export async function adminUpdateLogoSettings(formData) {
+  if (isMockEnabled()) {
+    const current = loadLocalLogo();
+    const next = { ...current };
+    
+    // Handle file uploads - create object URLs
+    if (formData instanceof FormData) {
+      const logoLightFile = formData.get("logoLight");
+      const logoDarkFile = formData.get("logoDark");
+      
+      if (logoLightFile instanceof File) {
+        next.logoLight = URL.createObjectURL(logoLightFile);
+      }
+      if (logoDarkFile instanceof File) {
+        next.logoDark = URL.createObjectURL(logoDarkFile);
+      }
+    } else {
+      // Handle JSON payload
+      if (formData?.logoLight) next.logoLight = formData.logoLight;
+      if (formData?.logoDark) next.logoDark = formData.logoDark;
+    }
+    
+    saveLocalLogo(next);
+    return { success: true, data: { logo: next } };
+  }
+  
   try {
     const res = await api.put(apiPath("/admin/site/logo"), formData, {
       headers: { "Content-Type": "multipart/form-data" },

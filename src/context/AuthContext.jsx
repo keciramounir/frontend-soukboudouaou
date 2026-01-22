@@ -2,6 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { createContext, useContext, useState, useEffect } from "react";
 import api from "../api/api";
+import { safeGetItem, safeSetItem, safeRemoveItem } from "../utils/localStorage";
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
@@ -11,22 +12,101 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem("token") || "");
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) setUser(JSON.parse(savedUser));
-  }, []);
+    // Load user from localStorage on mount
+    if (!user) {
+      const savedUser = safeGetItem("user");
+      if (savedUser) {
+        setUser(savedUser);
+      }
+    }
+    
+    // Load token from localStorage if not set
+    if (!token) {
+      const savedToken = localStorage.getItem("token"); // Keep as string for token
+      if (savedToken) setToken(savedToken);
+    }
+  }, []); // Run only on mount
 
   const saveSession = (userData, jwt, refreshToken) => {
     setUser(userData);
     setToken(jwt);
-    localStorage.setItem("user", JSON.stringify(userData));
-    localStorage.setItem("token", jwt);
-    if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
+    // Use safe functions for user data, direct for tokens (strings)
+    safeSetItem("user", userData);
+    try {
+      localStorage.setItem("token", jwt);
+      if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
+    } catch (error) {
+      console.error("Failed to save token:", error);
+    }
+  };
+
+  // Helper to check if mock is enabled
+  const isMockEnabled = () => {
+    return localStorage.getItem("use_mock") === "1" || 
+           import.meta.env.VITE_USE_MOCK === "1" ||
+           (import.meta.env.DEV && localStorage.getItem("use_mock") !== "0");
   };
 
   // ===========================
   // AUTH FLOWS (EMAIL/USERNAME)
   // ===========================
   const signup = async ({ username, email, password, fullName, wilaya }) => {
+    // Mock signup
+    if (isMockEnabled()) {
+      // Store mock users in localStorage
+      const mockUsers = safeGetItem("mock_users", []);
+      
+      // Check if user already exists
+      const existingUser = mockUsers.find(u => 
+        u.email?.toLowerCase() === email?.toLowerCase() ||
+        u.username?.toLowerCase() === username?.toLowerCase()
+      );
+      
+      if (existingUser) {
+        return { 
+          success: false, 
+          message: "Cet email ou nom d'utilisateur est déjà utilisé" 
+        };
+      }
+      
+      // Create new mock user
+      const newUser = {
+        _id: `u${Date.now()}`,
+        username: username,
+        email: email,
+        fullName: fullName || username,
+        phone: "",
+        wilaya: wilaya || "",
+        role: "user",
+        verified: false,
+        isActive: true,
+        createdAt: new Date().toISOString()
+      };
+      
+      // Store password hash (simple mock - in real app, never store plain passwords)
+      const mockUserWithPassword = {
+        ...newUser,
+        password: password // Mock only - for demo purposes
+      };
+      
+      mockUsers.push(mockUserWithPassword);
+      const saved = safeSetItem("mock_users", mockUsers);
+      
+      if (!saved) {
+        return {
+          success: false,
+          message: "Impossible de sauvegarder. Espace de stockage insuffisant."
+        };
+      }
+      
+      // Auto-login after signup
+      const mockToken = "mock-jwt-token-" + Date.now();
+      const mockRefreshToken = "mock-refresh-token-" + Date.now();
+      saveSession(newUser, mockToken, mockRefreshToken);
+      
+      return { success: true, user: newUser };
+    }
+    
     try {
       const res = await api.post("/auth/signup", {
         username,
@@ -51,6 +131,59 @@ export function AuthProvider({ children }) {
   };
 
   const login = async ({ identifier, password }) => {
+    // Mock login for demo
+    if (isMockEnabled()) {
+      // Check default mock credentials first
+      const mockEmail = "imad@soukboudouaou.com";
+      const mockPassword = "admin2025$";
+      const isEmailMatch = identifier?.toLowerCase() === mockEmail.toLowerCase();
+      const isPasswordMatch = password === mockPassword;
+      
+      if (isEmailMatch && isPasswordMatch) {
+        // Load default mock user - can be admin or user based on localStorage setting
+        const adminMode = localStorage.getItem("mock_admin_mode") === "1";
+        const mockUser = {
+          _id: "u1",
+          fullName: "Imad Soukboudouaou",
+          phone: "0550 12 34 56",
+          email: "imad@soukboudouaou.com",
+          username: "imad",
+          wilaya: "Algiers",
+          role: adminMode ? "super_admin" : "user",
+          verified: true,
+          isActive: true,
+          createdAt: "2025-10-10T09:00:00.000Z"
+        };
+        
+        const mockToken = "mock-jwt-token-" + Date.now();
+        const mockRefreshToken = "mock-refresh-token-" + Date.now();
+        
+        saveSession(mockUser, mockToken, mockRefreshToken);
+        return { success: true, user: mockUser };
+      }
+      
+      // Check mock users from localStorage (for signup users)
+      const mockUsers = safeGetItem("mock_users", []);
+      const foundUser = mockUsers.find(u => 
+        (u.email?.toLowerCase() === identifier?.toLowerCase() ||
+         u.username?.toLowerCase() === identifier?.toLowerCase()) &&
+        u.password === password
+      );
+      
+      if (foundUser) {
+        const { password: _, ...userWithoutPassword } = foundUser;
+        const mockToken = "mock-jwt-token-" + Date.now();
+        const mockRefreshToken = "mock-refresh-token-" + Date.now();
+        saveSession(userWithoutPassword, mockToken, mockRefreshToken);
+        return { success: true, user: userWithoutPassword };
+      }
+      
+      return { 
+        success: false, 
+        message: "Email/username ou mot de passe incorrect" 
+      };
+    }
+    
     try {
       const res = await api.post("/auth/login", { identifier, password });
       const { user: userData, token: jwt, refreshToken } = res.data;
@@ -103,6 +236,51 @@ export function AuthProvider({ children }) {
   };
 
   const forgotPassword = async (email) => {
+    // Mock forgot password
+    if (isMockEnabled()) {
+      const mockUsers = safeGetItem("mock_users", []);
+      const foundUser = mockUsers.find(u => 
+        u.email?.toLowerCase() === email?.toLowerCase()
+      );
+      
+      // Generate mock OTP and store it (for both default and signup users)
+      const mockOtp = "123456"; // Simple mock OTP for demo
+      const otpSaved = safeSetItem(`mock_otp_${email}`, mockOtp);
+      try {
+        localStorage.setItem(`mock_otp_time_${email}`, Date.now().toString());
+      } catch (error) {
+        console.error("Failed to save OTP time:", error);
+      }
+      
+      if (!otpSaved) {
+        return {
+          success: false,
+          message: "Impossible de sauvegarder. Espace de stockage insuffisant."
+        };
+      }
+      
+      // Also check default mock user
+      if (!foundUser && email?.toLowerCase() === "imad@soukboudouaou.com") {
+        return {
+          success: true,
+          message: "Code OTP envoyé (mock: 123456)",
+        };
+      }
+      
+      if (foundUser) {
+        return {
+          success: true,
+          message: "Code OTP envoyé (mock: 123456)",
+        };
+      }
+      
+      // Don't reveal if email exists or not (security)
+      return {
+        success: true,
+        message: "Si un compte existe, un code OTP a été envoyé (mock: 123456)",
+      };
+    }
+    
     try {
       const res = await api.post("/auth/forgot-password", { email });
       return {
@@ -120,6 +298,44 @@ export function AuthProvider({ children }) {
   };
 
   const verifyOtp = async (email, otp) => {
+    // Mock verify OTP
+    if (isMockEnabled()) {
+      const storedOtp = safeGetItem(`mock_otp_${email}`);
+      let otpTime;
+      try {
+        otpTime = localStorage.getItem(`mock_otp_time_${email}`);
+      } catch (error) {
+        console.error("Failed to get OTP time:", error);
+      }
+      
+      // Check if OTP exists and is not expired (10 minutes)
+      if (storedOtp && otpTime) {
+        const timeDiff = Date.now() - parseInt(otpTime);
+        const tenMinutes = 10 * 60 * 1000;
+        
+        if (timeDiff > tenMinutes) {
+          return {
+            success: false,
+            message: "Code OTP expiré. Veuillez en demander un nouveau.",
+          };
+        }
+        
+        if (storedOtp === otp || otp === "123456") {
+          // Store verification token
+          safeSetItem(`mock_otp_verified_${email}`, true);
+          return {
+            success: true,
+            message: "Code OTP vérifié avec succès.",
+          };
+        }
+      }
+      
+      return {
+        success: false,
+        message: "Code OTP invalide. Utilisez 123456 pour le mode mock.",
+      };
+    }
+    
     try {
       const res = await api.post("/auth/verify-otp", { email, otp });
       return {
@@ -137,6 +353,68 @@ export function AuthProvider({ children }) {
   };
 
   const resetPassword = async ({ email, otp, password }) => {
+    // Mock reset password
+    if (isMockEnabled()) {
+      const isVerified = safeGetItem(`mock_otp_verified_${email}`) === true;
+      const storedOtp = safeGetItem(`mock_otp_${email}`);
+      
+      if (!isVerified && storedOtp !== otp && otp !== "123456") {
+        return {
+          success: false,
+          message: "Code OTP invalide ou non vérifié.",
+        };
+      }
+      
+      // Update password in mock users
+      const mockUsers = safeGetItem("mock_users", []);
+      let userFound = false;
+      
+      // Check default mock user
+      if (email?.toLowerCase() === "imad@soukboudouaou.com") {
+        // For default user, just show success (we don't store its password)
+        userFound = true;
+      } else {
+        // Update password for signup users
+        const userIndex = mockUsers.findIndex(u => 
+          u.email?.toLowerCase() === email?.toLowerCase()
+        );
+        
+        if (userIndex !== -1) {
+          mockUsers[userIndex].password = password;
+          const saved = safeSetItem("mock_users", mockUsers);
+          if (saved) {
+            userFound = true;
+          } else {
+            return {
+              success: false,
+              message: "Impossible de sauvegarder. Espace de stockage insuffisant.",
+            };
+          }
+        }
+      }
+      
+      if (userFound) {
+        // Clean up OTP data
+        safeRemoveItem(`mock_otp_${email}`);
+        safeRemoveItem(`mock_otp_verified_${email}`);
+        try {
+          localStorage.removeItem(`mock_otp_time_${email}`);
+        } catch (error) {
+          console.error("Failed to remove OTP time:", error);
+        }
+        
+        return {
+          success: true,
+          message: "Mot de passe réinitialisé avec succès.",
+        };
+      }
+      
+      return {
+        success: false,
+        message: "Utilisateur non trouvé.",
+      };
+    }
+    
     try {
       const res = await api.post("/auth/reset-password", {
         email,
@@ -159,7 +437,7 @@ export function AuthProvider({ children }) {
 
   const updateUser = (newData) => {
     setUser(newData);
-    localStorage.setItem("user", JSON.stringify(newData));
+    safeSetItem("user", newData);
   };
 
   const logout = async () => {
@@ -170,9 +448,13 @@ export function AuthProvider({ children }) {
     }
     setUser(null);
     setToken("");
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    localStorage.removeItem("refreshToken");
+    safeRemoveItem("user");
+    try {
+      localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
+    } catch (error) {
+      console.error("Failed to remove tokens:", error);
+    }
   };
 
   return (

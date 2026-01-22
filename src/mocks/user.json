@@ -2,11 +2,14 @@
   "success": true,
   "user": {
     "_id": "u1",
-    "fullName": "Utilisateur Démo",
+    "fullName": "Imad Soukboudouaou",
     "phone": "0550 12 34 56",
-    "email": "demo@souk.dz",
+    "email": "imad@soukboudouaou.com",
+    "username": "imad",
     "wilaya": "Algiers",
     "role": "user",
+    "verified": true,
+    "isActive": true,
     "createdAt": "2025-10-10T09:00:00.000Z"
   }
 }

@@ -28,13 +28,15 @@ import { normalizeCategoryValue, normalizeImageUrl } from "../utils/images";
 import { useTheme } from "../context/themeContext";
 // Import asset images for fallbacks
 import chickenImg from "../assets/chicken.png";
-import chicken2Img from "../assets/chicken2.png";
+import turkeyImg from "../assets/turkey.png";
 
-// Fallback images for listings
-const LISTING_FALLBACKS = [chickenImg, chicken2Img];
-
+// Fallback images for listings - category-specific
 function getFallbackImage(category, index = 0) {
-  return LISTING_FALLBACKS[index % LISTING_FALLBACKS.length] || LISTING_FALLBACKS[0];
+  const normalized = String(category || "").toLowerCase();
+  if (normalized.includes("dinde") || normalized.includes("turkey")) {
+    return turkeyImg;
+  }
+  return chickenImg; // Default to chicken for Poulet
 }
 
 const DEFAULT_CALL_CENTER = [

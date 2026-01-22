@@ -11,13 +11,26 @@ export default function Profile() {
   const [listingCount, setListingCount] = useState(0);
   const [ordersCount, setOrdersCount] = useState(0);
   const [loadingCounts, setLoadingCounts] = useState(true);
+  
+  // Get user from localStorage if not in context (for mock mode)
+  const getCurrentUser = () => {
+    if (user) return user;
+    try {
+      const stored = localStorage.getItem("user");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  };
+  
+  const currentUser = getCurrentUser();
 
   useEffect(() => {
-    const role = user?.role || "";
+    const role = currentUser?.role || "";
     if (role === "ADMIN" || role === "super_admin") {
       navigate("/admin", { replace: true });
     }
-  }, [navigate, user?.role]);
+  }, [navigate, currentUser]);
 
   useEffect(() => {
     let active = true;
