@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft,
@@ -27,6 +27,7 @@ import { useTranslation } from "../context/translationContext";
 import { useCategoryOptions } from "../hooks/useCategoryOptions";
 import { normalizeCategoryValue, normalizeImageUrl } from "../utils/images";
 import { useTheme } from "../context/themeContext";
+import { getIconByName } from "../utils/iconLibrary";
 // Import asset images for fallbacks
 import chickenImg from "../assets/chicken.png";
 import turkeyImg from "../assets/turkey.png";
@@ -230,9 +231,6 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// Import icon library
-import { getIconByName } from "../utils/iconLibrary";
-
 // Icon mapping for custom fields (fallback for common fields)
 const iconMap = {
   delivery: Truck,
@@ -274,6 +272,10 @@ export default function ListingDetails() {
   const { t, language } = useTranslation();
   const { darkMode } = useTheme();
   const { accentFor, labelFor } = useCategoryOptions({ includeHidden: true });
+  
+  // Get listings context - ensure all functions are available
+  const listingsContext = useListings();
+  const { getListing, filterByCategory, getSaved, toggleSaved } = listingsContext || {};
 
   const [loading, setLoading] = useState(true);
   const [listing, setListing] = useState(null);
@@ -287,7 +289,18 @@ export default function ListingDetails() {
   const [similarLoading, setSimilarLoading] = useState(false);
   const [hasMoreSimilar, setHasMoreSimilar] = useState(true);
 
+  // Guard: ensure functions exist (after all hooks)
+  if (!getListing || !filterByCategory) {
+    return (
+      <div className="responsive-container py-10">
+        <div className="text-center opacity-70">{t("loading") || "Loading..."}</div>
+      </div>
+    );
+  }
+
   useEffect(() => {
+    if (!id || !getListing || !filterByCategory) return;
+    
     let active = true;
     (async () => {
       try {
@@ -327,10 +340,11 @@ export default function ListingDetails() {
     return () => {
       active = false;
     };
-  }, [id, getListing, filterByCategory]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // Load more similar listings (pagination)
-  const loadMoreSimilar = () => {
+  const loadMoreSimilar = useCallback(() => {
     if (similarLoading || !hasMoreSimilar || !listing) return;
     
     setSimilarLoading(true);
@@ -357,12 +371,9 @@ export default function ListingDetails() {
     } finally {
       setSimilarLoading(false);
     }
-  };
+  }, [similarLoading, hasMoreSimilar, listing, filterByCategory, similarPage]);
 
-  const { getSaved, toggleSaved } = useListings();
-  const { user } = useAuth();
-  
-  // Check if listing is saved
+  // Check if listing is saved (getSaved and toggleSaved already destructured above)
   useEffect(() => {
     const currentUserId = user?.id || user?._id || user?.email;
     if (!currentUserId || !listing) {
@@ -380,6 +391,10 @@ export default function ListingDetails() {
   const currentUserId = user?.id || user?._id || user?.email;
   const isOwner = !!currentUserId && String(currentUserId) === String(listingUserId);
 
+  // Extract category first (needed for listingImage useMemo)
+  const category =
+    pickLocalized(listing?.category, language) || listing?.category || "Poulet";
+  
   // Use backend images with asset fallbacks (like in home.jsx)
   // Use new model: image is a base64 string
   const listingImage = useMemo(() => {
@@ -395,8 +410,6 @@ export default function ListingDetails() {
 
   const title =
     pickLocalized(listing?.title, language) || t("listing") || "Annonce";
-  const category =
-    pickLocalized(listing?.category, language) || listing?.category || "Poulet";
   const categoryLabel = labelFor(listing?.category || category);
   const wilaya = pickLocalized(listing?.wilaya, language) || t("wilaya") || "";
   const views = Number(listing?.views || 0);

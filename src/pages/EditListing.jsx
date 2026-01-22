@@ -165,7 +165,9 @@ export default function EditListingPage() {
         try {
           imageBase64 = await fileToBase64(file);
         } catch (error) {
-          console.error("Failed to convert image to base64:", error);
+          if (import.meta.env.DEV) {
+            console.warn("Failed to convert image to base64:", error);
+          }
           throw new Error(t("imageUploadFailed") || "Échec du téléchargement de l'image");
         }
       }
@@ -206,7 +208,9 @@ export default function EditListingPage() {
         t("updateFailed") || "Échec de la mise à jour"
       );
     } catch (err) {
-      console.error("Update listing error:", err);
+      if (import.meta.env.DEV) {
+        console.warn("Update listing error:", err);
+      }
       toast.error(
         err?.message ||
           t("updateFailed") ||

@@ -166,7 +166,9 @@ export default function CreateListing() {
         try {
           imageBase64 = await fileToBase64(file);
         } catch (error) {
-          console.error("Failed to convert image to base64:", error);
+          if (import.meta.env.DEV) {
+            console.warn("Failed to convert image to base64:", error);
+          }
           throw new Error(t("imageUploadFailed") || "Échec du téléchargement de l'image");
         }
       }
@@ -204,7 +206,9 @@ export default function CreateListing() {
 
       throw new Error(t("createFailed") || "Échec de la création");
     } catch (err) {
-      console.error("Create listing error:", err);
+      if (import.meta.env.DEV) {
+        console.warn("Create listing error:", err);
+      }
       toast.error(
         err?.message || t("createFailed") || "Échec de la création de l'annonce"
       );

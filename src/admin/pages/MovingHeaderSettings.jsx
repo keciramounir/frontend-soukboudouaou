@@ -307,6 +307,7 @@ export default function MovingHeaderSettings() {
                   );
                 } catch {}
                 try {
+                  // Dispatch custom event with the full data structure
                   window.dispatchEvent(
                     new CustomEvent("moving-header-updated", {
                       detail: {
@@ -315,6 +316,8 @@ export default function MovingHeaderSettings() {
                         prefixFr: nextPrefixFr,
                         prefixAr: nextPrefixAr,
                         textColor: nextTextColor,
+                        backgroundColor: json.data?.backgroundColor || backgroundColor || "",
+                        animationDuration: json.data?.animationDuration || animationDuration || 25,
                         heightPx: nextHeightPx,
                         translateWilayaAr: nextTranslateWilayaAr,
                       },

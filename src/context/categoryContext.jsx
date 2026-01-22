@@ -4,9 +4,12 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { normalizeCategoryValue } from "../utils/images";
+import turkeyImg from "../assets/turkey.png";
+import chickenImg from "../assets/chicken.png";
 
 const STORAGE_KEY = "admin_categories_v1";
 
@@ -27,6 +30,7 @@ const DEFAULT_CATEGORIES = [
     labels: { fr: "Poulet", en: "Chicken", ar: "دجاج" },
     accent: "#f97316",
     icon: "P",
+    iconUrl: chickenImg,
     translationKey: "cat_chicken",
     visible: true,
   },
@@ -36,6 +40,7 @@ const DEFAULT_CATEGORIES = [
     labels: { fr: "Dinde", en: "Turkey", ar: "ديك رومي" },
     accent: "#f59e0b",
     icon: "D",
+    iconUrl: turkeyImg,
     translationKey: "cat_turkey",
     visible: true,
   },
@@ -65,6 +70,14 @@ function ensureDefaultCategories(cats) {
     normalizeCategoryValue(c.value) !== "Dinde"
   );
   
+  // Restore default iconUrls for Poulet and Dinde if missing (imported modules can't be serialized)
+  if (poulet && !poulet.iconUrl) {
+    poulet.iconUrl = chickenImg;
+  }
+  if (dinde && !dinde.iconUrl) {
+    dinde.iconUrl = turkeyImg;
+  }
+  
   return [poulet, dinde, ...others].filter(Boolean);
 }
 
@@ -74,12 +87,10 @@ function ensureCategoryShape(cat, idx = 0) {
   if (!cat) return null;
   const safeValue = String(cat.value || "").trim() || "Categorie";
   const pickColor = COLOR_POOL[idx % COLOR_POOL.length] || "#4c8df7";
-  const iconUrl =
-    typeof cat.iconUrl === "string" && cat.iconUrl
-      ? cat.iconUrl
-      : typeof cat.icon === "string" && cat.icon.startsWith("data:image")
-      ? cat.icon
-      : "";
+  // Handle iconUrl - can be string (URL or base64), imported module, or empty
+  const iconUrl = cat.iconUrl || 
+    (typeof cat.icon === "string" && cat.icon.startsWith("data:image") ? cat.icon : "") ||
+    "";
   return {
     id: cat.id || `cat-${idx}-${Date.now()}`,
     value: safeValue,
@@ -117,16 +128,18 @@ function loadInitialCategories() {
 
 export function CategoryProvider({ children }) {
   const [categories, setCategories] = useState(loadInitialCategories);
+  const isUpdatingFromStorage = useRef(false);
 
+  // Save categories to localStorage (but not if update came from storage event)
   useEffect(() => {
+    if (isUpdatingFromStorage.current) {
+      isUpdatingFromStorage.current = false;
+      return; // Don't save if this update came from storage
+    }
+    
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(categories));
-      // Trigger storage event for cross-tab sync
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: STORAGE_KEY,
-        newValue: JSON.stringify(categories),
-        storageArea: localStorage
-      }));
+      // Trigger custom event for same-tab sync (but NOT storage event to avoid loop)
       window.dispatchEvent(new CustomEvent('categories-updated', { detail: categories }));
     } catch {
       // ignore storage errors
@@ -144,6 +157,7 @@ export function CategoryProvider({ children }) {
               .map((c, idx) => ensureCategoryShape(c, idx))
               .filter(Boolean);
             const ensured = ensureDefaultCategories(loaded);
+            isUpdatingFromStorage.current = true; // Mark that this update is from storage
             setCategories(ensured);
           }
         } catch {
@@ -152,17 +166,28 @@ export function CategoryProvider({ children }) {
       }
     };
     
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('categories-updated', (e) => {
+    const handleCustomUpdate = (e) => {
       if (e.detail && Array.isArray(e.detail)) {
         const ensured = ensureDefaultCategories(e.detail);
-        setCategories(ensured);
+        // Only update if it's different (prevent loop)
+        setCategories(prev => {
+          const prevStr = JSON.stringify(prev);
+          const newStr = JSON.stringify(ensured);
+          if (prevStr !== newStr) {
+            isUpdatingFromStorage.current = true;
+            return ensured;
+          }
+          return prev;
+        });
       }
-    });
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('categories-updated', handleCustomUpdate);
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('categories-updated', () => {});
+      window.removeEventListener('categories-updated', handleCustomUpdate);
     };
   }, []);
 

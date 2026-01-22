@@ -1002,8 +1002,10 @@ function saveLocalMovingHeader(payload) {
         storageArea: localStorage
       }));
       // Also dispatch custom event for same-tab updates
+      // Pass the data object directly (unwrap if it's in payload.data)
+      const dataToPass = payload?.data || payload;
       window.dispatchEvent(new CustomEvent('moving-header-updated', {
-        detail: payload
+        detail: dataToPass
       }));
     } catch (e) {
       // ignore event errors
@@ -1040,6 +1042,7 @@ export async function updateMovingHeaderSettings(payload) {
   };
   
   if (isMockEnabled()) {
+    // Save the full response object (with success and data)
     saveLocalMovingHeader(next);
     return next;
   }
@@ -1063,7 +1066,19 @@ const HERO_KEY = "site_hero_slides_v1";
 function loadLocalHeroSlides() {
   try {
     const raw = localStorage.getItem(HERO_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Clean up any blob URLs in slides
+      if (parsed?.data?.slides) {
+        parsed.data.slides = parsed.data.slides.map(slide => {
+          if (slide.url && typeof slide.url === 'string' && slide.url.startsWith('blob:')) {
+            return { ...slide, url: '' }; // Remove blob URLs
+          }
+          return slide;
+        });
+      }
+      return parsed;
+    }
   } catch {
     // ignore
   }
@@ -1213,6 +1228,15 @@ export async function adminUpdateHeroSlides(payload) {
 }
 
 export async function adminDeleteHeroSlide(id) {
+  if (isMockEnabled()) {
+    const base = loadLocalHeroSlides();
+    const slides = base?.data?.slides || [];
+    const filtered = slides.filter(s => String(s.id) !== String(id));
+    const next = { success: true, data: { slides: filtered } };
+    saveLocalHeroSlides(next);
+    return next;
+  }
+  
   try {
     const res = await api.delete(apiPath(`/admin/site/hero-slides/${id}`));
     return res.data;
@@ -1263,7 +1287,15 @@ const defaultFooter = {
 function loadLocalCta() {
   try {
     const raw = localStorage.getItem(CTA_KEY);
-    if (raw) return { ...defaultCta, ...(JSON.parse(raw) || {}) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const cleaned = { ...defaultCta, ...parsed };
+      // Clean up any blob URLs
+      if (cleaned.imageUrl && typeof cleaned.imageUrl === 'string' && cleaned.imageUrl.startsWith('blob:')) {
+        cleaned.imageUrl = '';
+      }
+      return cleaned;
+    }
   } catch {
     // ignore
   }
@@ -1370,8 +1402,6 @@ export async function adminUpdateCtaSettings(payload) {
     return { success: true, data: { cta: next } };
   }
   
-  const isFormData =
-    typeof FormData !== "undefined" && payload instanceof FormData;
   try {
     const res = await api.put(
       apiPath("/admin/site/cta"),
@@ -1483,7 +1513,18 @@ const defaultLogo = {
 function loadLocalLogo() {
   try {
     const raw = localStorage.getItem(LOGO_KEY);
-    if (raw) return { ...defaultLogo, ...(JSON.parse(raw) || {}) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Clean up any blob URLs
+      const cleaned = { ...defaultLogo, ...parsed };
+      if (cleaned.logoLight && typeof cleaned.logoLight === 'string' && cleaned.logoLight.startsWith('blob:')) {
+        cleaned.logoLight = '';
+      }
+      if (cleaned.logoDark && typeof cleaned.logoDark === 'string' && cleaned.logoDark.startsWith('blob:')) {
+        cleaned.logoDark = '';
+      }
+      return cleaned;
+    }
   } catch {
     // ignore
   }

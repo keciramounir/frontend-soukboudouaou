@@ -20,6 +20,8 @@ import {
 } from "../api/dataService";
 import { normalizeCategoryValue, normalizeImageUrl } from "../utils/images";
 import { useCategoryOptions } from "../hooks/useCategoryOptions";
+import { useListings } from "../context/ListingsContext";
+import { useAuth } from "../context/AuthContext";
 import Logo from "../components/Logo";
 // Import asset images for fallbacks
 import chickenImg from "../assets/chicken.png";
@@ -104,10 +106,8 @@ export default function Home() {
     labelFor,
     hasValue,
   } = useCategoryOptions();
-  const { listings, loading: listingsLoading, filterByCategory, searchListings } = useListings();
-  
+  const { listings, loading: listingsLoading, filterByCategory, searchListings, toggleSaved, getSaved } = useListings();
   const { user } = useAuth();
-  const { toggleSaved, getSaved } = useListings();
   
   // Get saved listing IDs for current user
   const savedListingIds = useMemo(() => {
@@ -144,24 +144,27 @@ export default function Home() {
   const filteredListings = useMemo(() => {
     let result = listings || [];
     
-    // Filter by category
+    // Filter by category first
     if (activeCategory) {
-      result = filterByCategory(activeCategory);
+      const normalizedCategory = normalizeCategoryValue(activeCategory);
+      result = result.filter(l => {
+        const listingCategory = normalizeCategoryValue(l.category || "");
+        return listingCategory === normalizedCategory;
+      });
     }
     
-    // Search
+    // Then apply search if query exists
     if (query.trim()) {
-      result = searchListings(query.trim());
-      // Re-apply category filter after search
-      if (activeCategory) {
-        result = result.filter(l => 
-          String(l.category || "").toLowerCase() === String(activeCategory).toLowerCase()
-        );
-      }
+      const term = String(query).toLowerCase().trim();
+      result = result.filter(l => {
+        const title = String(l.title || "").toLowerCase();
+        const desc = String(l.description || "").toLowerCase();
+        return title.includes(term) || desc.includes(term);
+      });
     }
     
     return result;
-  }, [listings, activeCategory, query, filterByCategory, searchListings]);
+  }, [listings, activeCategory, query]);
   
   const [loading, setLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(150);
@@ -236,20 +239,27 @@ export default function Home() {
     t("orderAction") ||
     (language === "ar" ? "تخصيص الترتيب" : "Filtrer l'ordre");
 
+  // Sync URL with category on mount and URL changes only (not when state changes)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const categoryParam = params.get("category");
     if (categoryParam) {
       const normalized = normalizeCategoryValue(categoryParam);
-      if (normalized && normalizeCategoryValue(activeCategory) !== normalized) {
+      const currentNormalized = normalizeCategoryValue(activeCategory);
+      if (normalized && currentNormalized !== normalized) {
         setActiveCategory(normalized);
       }
-    } else if (categories.length > 0 && !hasValue(activeCategory)) {
+    } else if (categories.length > 0 && !activeCategory) {
+      // Only set default if no category in URL and no active category
       const firstCategory = normalizeCategoryValue(categories[0].value);
-      setActiveCategory(firstCategory);
-      navigate(`/?category=${encodeURIComponent(firstCategory)}`, { replace: true });
+      if (firstCategory) {
+        setActiveCategory(firstCategory);
+        navigate(`/?category=${encodeURIComponent(firstCategory)}`, { replace: true });
+      }
     }
-  }, [categories, hasValue, location.search, navigate, activeCategory]);
+    // Only depend on URL to avoid loops - don't include activeCategory or categories
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -372,7 +382,10 @@ export default function Home() {
           );
         }
       } catch (e) {
-        console.error("Hero slides error", e);
+        // Silently handle hero slides errors in mock mode
+        if (import.meta.env.DEV) {
+          console.warn("Hero slides error", e);
+        }
       }
     })();
     return () => {
@@ -509,11 +522,8 @@ export default function Home() {
       startFilter instanceof Date && !Number.isNaN(startFilter);
     const hasEndFilter = endFilter instanceof Date && !Number.isNaN(endFilter);
 
+    // filteredListings already has category and search applied, so just apply additional filters
     const filtered = (filteredListings || []).filter((l) => {
-      const sameCategory =
-        normalizeCategoryValue(l.category) ===
-        normalizeCategoryValue(activeCategory);
-      if (!sameCategory) return false;
 
       const wilayaValue = (l.wilaya || l.location || "")
         .toString()
@@ -577,42 +587,8 @@ export default function Home() {
       return true;
     });
 
-    const filteredByQuery = query
-      ? filtered.filter((l) => {
-          const title = l.title?.[language] || l.title?.fr || l.title || "";
-          const desc =
-            l.description?.[language] ||
-            l.description?.fr ||
-            l.description ||
-            "";
-          const farmer = l.farmer?.name || "";
-          const detailText = [
-            l.details,
-            l.detail,
-            l.longDescription,
-            l.summary,
-            l.features,
-            l.descriptionExtra,
-            l.highlights,
-            l.body,
-          ]
-            .map(flattenText)
-            .join(" ");
-          const combined = [
-            title,
-            desc,
-            farmer,
-            detailText,
-            l.wilaya,
-            l.location,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          const q = query.toLowerCase();
-          return combined.includes(q);
-        })
-      : filtered;
+    // Query is already applied in filteredListings, so no need to filter again
+    const filteredByQuery = filtered;
 
     const listingDate = (l) => {
       const candidate =
@@ -647,8 +623,6 @@ export default function Home() {
     return sorted;
   }, [
     filteredListings,
-    activeCategory,
-    query,
     language,
     filterWilaya,
     priceMin,
@@ -970,8 +944,11 @@ export default function Home() {
                   type="button"
                   onClick={() => {
                     const normalizedValue = normalizeCategoryValue(c.value);
-                    setActiveCategory(normalizedValue);
-                    navigate(`/?category=${encodeURIComponent(normalizedValue)}`, { replace: true });
+                    // Update state and URL without causing re-render loops
+                    if (normalizeCategoryValue(activeCategory) !== normalizedValue) {
+                      setActiveCategory(normalizedValue);
+                      navigate(`/?category=${encodeURIComponent(normalizedValue)}`, { replace: true });
+                    }
                   }}
                   className={`category-button group ${
                     isActive ? "category-active" : ""
@@ -997,7 +974,7 @@ export default function Home() {
                         borderStyle: "solid",
                       }}
                     >
-                      {typeof c.iconUrl === "string" && c.iconUrl.trim() ? (
+                      {c.iconUrl ? (
                         <img
                           src={c.iconUrl}
                           alt={safeLabel(categoryLabel(c.value))}

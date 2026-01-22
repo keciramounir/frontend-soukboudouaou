@@ -38,7 +38,10 @@ export function ListingsProvider({ children }) {
       setListings(loaded);
       setLoading(false);
     } catch (error) {
-      console.error('Failed to load listings:', error);
+      // Silently handle errors in mock mode
+      if (import.meta.env.DEV) {
+        console.warn('Failed to load listings:', error);
+      }
       setListings([]);
       setLoading(false);
     }

@@ -19,32 +19,97 @@
 const STORAGE_KEY = "mock_listings";
 
 /**
+ * Check if localStorage is available (works on mobile browsers)
+ */
+function isLocalStorageAvailable() {
+  try {
+    const test = '__localStorage_test__';
+    localStorage.setItem(test, test);
+    localStorage.removeItem(test);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Get all listings from persistent storage
+ * Works on mobile browsers (localStorage is supported)
  */
 export function getAllListings() {
+  if (!isLocalStorageAvailable()) {
+    // Silently return empty array if localStorage not available
+    return [];
+  }
+  
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : [];
+      const listings = Array.isArray(parsed) ? parsed : [];
+      
+      // Clean up any blob URLs (they're not persistent)
+      // Convert them to empty strings so fallback images are used
+      return listings.map(listing => {
+        if (listing.image && typeof listing.image === 'string' && listing.image.startsWith('blob:')) {
+          return { ...listing, image: '' }; // Remove blob URLs
+        }
+        return listing;
+      });
     }
   } catch (error) {
-    console.error("Failed to load listings:", error);
+    // Silently handle errors in mock mode
+    if (import.meta.env.DEV) {
+      console.warn("Failed to load listings:", error);
+    }
   }
   return [];
 }
 
 /**
  * Save all listings to persistent storage
+ * Works on mobile browsers - handles storage quota errors
  */
 export function saveAllListings(listings) {
+  if (!isLocalStorageAvailable()) {
+    // Silently return false if localStorage not available
+    return false;
+  }
+  
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(listings));
-    // Dispatch event for cross-component sync
-    window.dispatchEvent(new CustomEvent('listings-updated', { detail: listings }));
+    const dataToSave = JSON.stringify(listings);
+    
+    // Check storage quota (important for mobile devices)
+    try {
+      localStorage.setItem(STORAGE_KEY, dataToSave);
+    } catch (quotaError) {
+      // Handle quota exceeded error (common on mobile with limited storage)
+      if (quotaError.name === 'QuotaExceededError' || quotaError.code === 22) {
+        // Try to save a smaller subset (keep last 100 listings)
+        const limited = listings.slice(0, 100);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(limited));
+        } catch {
+          return false;
+        }
+      } else {
+        throw quotaError;
+      }
+    }
+    
+    // Dispatch event for cross-component sync (works on mobile)
+    try {
+      window.dispatchEvent(new CustomEvent('listings-updated', { detail: listings }));
+    } catch (eventError) {
+      // Event dispatch failed, but data is saved - silently continue
+    }
+    
     return true;
   } catch (error) {
-    console.error("Failed to save listings:", error);
+    // Silently handle errors in mock mode
+    if (import.meta.env.DEV) {
+      console.warn("Failed to save listings:", error);
+    }
     return false;
   }
 }
@@ -59,6 +124,7 @@ export function getListingById(id) {
 
 /**
  * Create a new listing
+ * Saves all parameters to localStorage (works on mobile)
  */
 export function createListing(listingData) {
   const listings = getAllListings();
@@ -75,7 +141,18 @@ export function createListing(listingData) {
     status: listingData.status || "published",
     wilaya: listingData.wilaya || "",
     savedBy: [], // Array of user IDs
-    // Additional fields
+    // Save ALL additional fields (works on mobile)
+    listingDate: listingData.listingDate || "",
+    breedingDate: listingData.breedingDate || "",
+    preparationDate: listingData.preparationDate || "",
+    trainingType: listingData.trainingType || "",
+    medicationsUsed: listingData.medicationsUsed || "",
+    vaccinated: listingData.vaccinated || false,
+    quantity: listingData.quantity || 0,
+    delivery: listingData.delivery || false,
+    averageWeight: listingData.averageWeight || 0,
+    unit: listingData.unit || "kg",
+    // Additional fields from form
     ...listingData,
   };
   
@@ -86,6 +163,7 @@ export function createListing(listingData) {
 
 /**
  * Update an existing listing
+ * Saves all parameters to localStorage (works on mobile)
  */
 export function updateListing(id, updates) {
   const listings = getAllListings();
@@ -97,7 +175,7 @@ export function updateListing(id, updates) {
   
   const updated = {
     ...listings[index],
-    ...updates,
+    ...updates, // All update parameters are saved
     id: listings[index].id || listings[index]._id, // Preserve original ID
     updatedAt: new Date().toISOString(),
   };
