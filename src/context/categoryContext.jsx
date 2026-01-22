@@ -41,6 +41,33 @@ const DEFAULT_CATEGORIES = [
   },
 ];
 
+// Ensure categories are always Poulet and Dinde
+function ensureDefaultCategories(cats) {
+  const normalized = cats || [];
+  const hasPoulet = normalized.some(c => normalizeCategoryValue(c.value) === "Poulet");
+  const hasDinde = normalized.some(c => normalizeCategoryValue(c.value) === "Dinde");
+  
+  const result = [...normalized];
+  
+  if (!hasPoulet) {
+    result.unshift(DEFAULT_CATEGORIES[0]);
+  }
+  if (!hasDinde) {
+    const pouletIdx = result.findIndex(c => normalizeCategoryValue(c.value) === "Poulet");
+    result.splice(pouletIdx + 1, 0, DEFAULT_CATEGORIES[1]);
+  }
+  
+  // Ensure order: Poulet first, Dinde second
+  const poulet = result.find(c => normalizeCategoryValue(c.value) === "Poulet");
+  const dinde = result.find(c => normalizeCategoryValue(c.value) === "Dinde");
+  const others = result.filter(c => 
+    normalizeCategoryValue(c.value) !== "Poulet" && 
+    normalizeCategoryValue(c.value) !== "Dinde"
+  );
+  
+  return [poulet, dinde, ...others].filter(Boolean);
+}
+
 const CategoryContext = createContext(null);
 
 function ensureCategoryShape(cat, idx = 0) {
@@ -78,16 +105,8 @@ function loadInitialCategories() {
         const loaded = parsed
           .map((c, idx) => ensureCategoryShape(c, idx))
           .filter(Boolean);
-        // Filter to only Poulet and Dinde, and ensure they exist
-        const filtered = loaded.filter(c => 
-          normalizeCategoryValue(c.value) === "Poulet" || 
-          normalizeCategoryValue(c.value) === "Dinde"
-        );
-        // If we don't have both categories, use defaults
-        if (filtered.length < 2) {
-          return DEFAULT_CATEGORIES;
-        }
-        return filtered;
+        // Ensure Poulet and Dinde always exist and are in correct order
+        return ensureDefaultCategories(loaded);
       }
     }
   } catch {
@@ -102,10 +121,50 @@ export function CategoryProvider({ children }) {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(categories));
+      // Trigger storage event for cross-tab sync
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: STORAGE_KEY,
+        newValue: JSON.stringify(categories),
+        storageArea: localStorage
+      }));
+      window.dispatchEvent(new CustomEvent('categories-updated', { detail: categories }));
     } catch {
       // ignore storage errors
     }
   }, [categories]);
+  
+  // Listen for storage changes from other tabs
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            const loaded = parsed
+              .map((c, idx) => ensureCategoryShape(c, idx))
+              .filter(Boolean);
+            const ensured = ensureDefaultCategories(loaded);
+            setCategories(ensured);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('categories-updated', (e) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        const ensured = ensureDefaultCategories(e.detail);
+        setCategories(ensured);
+      }
+    });
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('categories-updated', () => {});
+    };
+  }, []);
 
   const visibleCategories = useMemo(
     () => categories.filter((c) => c.visible !== false),

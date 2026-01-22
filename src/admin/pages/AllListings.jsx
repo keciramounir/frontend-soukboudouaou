@@ -1,43 +1,39 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useTranslation } from "../../context/translationContext";
-import { adminSetListingStatus, getAdminListings } from "../../api/dataService";
+import { useListings } from "../../context/ListingsContext";
+import { useToast } from "../../context/ToastContext";
 
 export default function AllListings() {
   const { user } = useAuth();
   const { t } = useTranslation();
+  const toast = useToast();
+  const { listings, loading: listingsLoading, searchListings, deleteListing, updateListing } = useListings();
   const role = user?.role || "user";
   const isSuperAdmin = role === "super_admin";
 
-  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
-  const [rows, setRows] = useState([]);
-  // Super admins can always delete listings
   const allowDelete = isSuperAdmin;
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      if (!isSuperAdmin) return;
-      try {
-        setLoading(true);
-        const res = await getAdminListings({
-          page: 1,
-          limit: 100,
-          q: q || undefined,
-          status: status || undefined,
-        });
-        if (!active) return;
-        setRows(res.data?.listings || []);
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [isSuperAdmin, q, status]);
+  
+  // Filter listings
+  const filteredListings = useMemo(() => {
+    let result = listings || [];
+    
+    // Search
+    if (q.trim()) {
+      result = searchListings(q.trim());
+    }
+    
+    // Filter by status
+    if (status) {
+      result = result.filter(l => String(l.status || "").toLowerCase() === String(status).toLowerCase());
+    }
+    
+    return result;
+  }, [listings, q, status, searchListings]);
+  
+  const rows = filteredListings;
 
   const tableRows = useMemo(() => {
     return (rows || []).map((l) => ({
@@ -143,7 +139,7 @@ export default function AllListings() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {listingsLoading ? (
                 <tr>
                   <td
                     className="px-4 py-12 text-center"
@@ -191,15 +187,15 @@ export default function AllListings() {
                         value={r.status}
                         onChange={async (e) => {
                           const next = e.target.value;
-                          const json = await adminSetListingStatus(r.id, next);
-                          if (json?.success) {
-                            setRows((prev) =>
-                              (prev || []).map((x) =>
-                                (x.id || x._id) === r.id ? json.data.listing : x
-                              )
-                            );
-                          } else {
-                            alert(json?.message || "Update failed");
+                          try {
+                            const updated = updateListing(r.id, { status: next });
+                            if (updated) {
+                              toast.success(t("statusUpdated") || "Statut mis à jour");
+                            } else {
+                              toast.error(t("updateFailed") || "Mise à jour échouée");
+                            }
+                          } catch (e) {
+                            toast.error(e?.message || t("updateFailed") || "Mise à jour échouée");
                           }
                         }}
                       >
@@ -216,18 +212,23 @@ export default function AllListings() {
                           className="btn-secondary text-red-500 border-red-500/10 hover:bg-red-500 hover:text-white py-1 px-3 text-[10px] font-bold uppercase tracking-wider"
                           onClick={async () => {
                             const confirmDelete = window.confirm(
-                              t("confirm") || "Supprimer cette annonce ?"
+                              t("confirmDelete") || t("confirm") || "Supprimer cette annonce ?"
                             );
                             if (!confirmDelete) return;
                             try {
-                              await adminSetListingStatus(r.id, "deleted");
+                              const res = await deleteListing(r.id);
+                              if (res?.success === false) {
+                                toast.error(res.message || t("deleteFailed") || "Suppression impossible");
+                                return;
+                              }
+                              toast.success(t("listingDeleted") || t("deleted") || "Annonce supprimée");
                               setRows((prev) =>
                                 (prev || []).filter(
                                   (x) => (x.id || x._id) !== r.id
                                 )
                               );
                             } catch (e) {
-                              alert(e?.message || "Suppression impossible");
+                              toast.error(e?.message || t("deleteFailed") || "Suppression impossible");
                             }
                           }}
                         >

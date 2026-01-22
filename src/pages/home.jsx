@@ -91,7 +91,7 @@ function flattenText(value) {
   return "";
 }
 
-const SAVED_LISTINGS_KEY = "saved_listings_v1";
+// Saved listings now handled by ListingsContext
 
 export default function Home() {
   const navigate = useNavigate();
@@ -104,8 +104,18 @@ export default function Home() {
     labelFor,
     hasValue,
   } = useCategoryOptions();
+  const { listings, loading: listingsLoading, filterByCategory, searchListings } = useListings();
   
-  const [savedListingIds, setSavedListingIds] = useState(new Set());
+  const { user } = useAuth();
+  const { toggleSaved, getSaved } = useListings();
+  
+  // Get saved listing IDs for current user
+  const savedListingIds = useMemo(() => {
+    const currentUserId = user?.id || user?._id || user?.email;
+    if (!currentUserId) return new Set();
+    const saved = getSaved(currentUserId);
+    return new Set(saved.map(l => String(l.id || l._id)));
+  }, [user, getSaved]);
 
   const pageX = "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8";
   const defaultFooter = {
@@ -130,8 +140,30 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [heroSlides, setHeroSlides] = useState([]);
-  const [allListings, setAllListings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Use listings from context (single source of truth)
+  const filteredListings = useMemo(() => {
+    let result = listings || [];
+    
+    // Filter by category
+    if (activeCategory) {
+      result = filterByCategory(activeCategory);
+    }
+    
+    // Search
+    if (query.trim()) {
+      result = searchListings(query.trim());
+      // Re-apply category filter after search
+      if (activeCategory) {
+        result = result.filter(l => 
+          String(l.category || "").toLowerCase() === String(activeCategory).toLowerCase()
+        );
+      }
+    }
+    
+    return result;
+  }, [listings, activeCategory, query, filterByCategory, searchListings]);
+  
+  const [loading, setLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(150);
   const [footerConfig, setFooterConfig] = useState(null);
   const [logoConfig, setLogoConfig] = useState(null);
@@ -145,57 +177,17 @@ export default function Home() {
   const [orderBy, setOrderBy] = useState("newest"); // Default: newest first
   const [orderOpen, setOrderOpen] = useState(false);
 
-  // Load saved listings on mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SAVED_LISTINGS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const list = Array.isArray(parsed) ? parsed : [];
-        const ids = new Set(list.map(item => String(item.id || item._id)));
-        setSavedListingIds(ids);
-      }
-    } catch {
-      setSavedListingIds(new Set());
-    }
-  }, []);
-
-  // Toggle save listing
+  // Toggle save listing using context
   const toggleSaveListing = useCallback((listing) => {
-    try {
-      const raw = localStorage.getItem(SAVED_LISTINGS_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      const list = Array.isArray(parsed) ? parsed : [];
-      const listingId = String(listing.id || listing._id);
-      
-      const entry = {
-        id: listing.id || listing._id,
-        title: listing.title?.[language] || listing.title?.fr || listing.title,
-        category: listing.category,
-        price: listing.price,
-        wilaya: listing.wilaya || listing.location,
-        images: listing.images || [],
-        image: listing.images?.[0],
-        savedAt: Date.now(),
-      };
-
-      if (savedListingIds.has(listingId)) {
-        const next = list.filter(item => String(item.id || item._id) !== listingId);
-        localStorage.setItem(SAVED_LISTINGS_KEY, JSON.stringify(next));
-        setSavedListingIds(prev => {
-          const nextSet = new Set(prev);
-          nextSet.delete(listingId);
-          return nextSet;
-        });
-      } else {
-        const next = [entry, ...list].slice(0, 50);
-        localStorage.setItem(SAVED_LISTINGS_KEY, JSON.stringify(next));
-        setSavedListingIds(prev => new Set([...prev, listingId]));
-      }
-    } catch (error) {
-      console.error("Error saving listing:", error);
+    const currentUserId = user?.id || user?._id || user?.email;
+    if (!currentUserId) {
+      // User not logged in - could show login prompt
+      return;
     }
-  }, [savedListingIds, language]);
+    
+    const listingId = String(listing.id || listing._id);
+    toggleSaved(listingId, currentUserId);
+  }, [user, toggleSaved]);
 
   const activeAccent = useMemo(
     () => accentFor(activeCategory),
@@ -268,60 +260,35 @@ export default function Home() {
     );
   }, [activeAccent, darkMode]);
 
+  // Listen for hero slides updates from other tabs
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const [slidesJson, listingsJson] = await Promise.all([
-          getHeroSlides().catch(() => ({
-            data: { slides: [], isVisible: true },
-          })),
-          getListings().catch(() => ({ data: { listings: [] } })),
-        ]);
-        if (!alive) return;
-
-        // HERO SLIDES
+    const handleHeroUpdate = () => {
+      getHeroSlides().then(slidesJson => {
         const slidesData = slidesJson?.data || slidesJson || {};
         const slideArr = Array.isArray(slidesData.slides)
           ? slidesData.slides
           : Array.isArray(slidesData)
           ? slidesData
           : [];
-
-        // Check visibility (default true)
-        const isHeroVisible =
-          slidesData.isVisible !== undefined ? slidesData.isVisible : true;
-
+        const isHeroVisible = slidesData.isVisible !== undefined ? slidesData.isVisible : true;
         if (!isHeroVisible) {
-          setHeroSlides([]); // Empty array = hidden capability
+          setHeroSlides([]);
         } else {
           setHeroSlides(
-            slideArr.map((s) => {
-              const durationMs =
-                Number(s?.durationMs || s?.duration) ||
-                (Number(s?.durationSeconds)
-                  ? Math.round(Number(s.durationSeconds) * 1000)
-                  : 0) ||
-                5000;
-              // Normalize URL if it's from backend, otherwise use as-is (for asset imports)
+            slideArr.map((s, idx) => {
+              const durationMs = Number(s?.durationMs || s?.duration) ||
+                (Number(s?.durationSeconds) ? Math.round(Number(s.durationSeconds) * 1000) : 0) || 5000;
               let finalUrl = null;
               if (s?.url) {
                 const urlStr = String(s.url);
-                // If it's a data URL or already a full URL, use as-is
-                // If it starts with http/https, use as-is
-                // If it's an asset import (contains /assets/ or starts with /src/), use as-is
-                if (urlStr.startsWith('data:') || 
-                    urlStr.startsWith('http://') || 
-                    urlStr.startsWith('https://') ||
-                    urlStr.includes('/assets/') ||
+                if (urlStr.startsWith('data:') || urlStr.startsWith('http://') || 
+                    urlStr.startsWith('https://') || urlStr.includes('/assets/') || 
                     urlStr.startsWith('/src/')) {
                   finalUrl = urlStr;
                 } else {
-                  // Normalize backend URLs
                   finalUrl = normalizeImageUrl(urlStr);
                 }
               }
-              // Use fallback if no URL
               if (!finalUrl) {
                 finalUrl = getFallbackImage(null, idx, "slide");
               }
@@ -334,48 +301,89 @@ export default function Home() {
             })
           );
         }
+      }).catch(() => {});
+    };
+    
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'site_hero_slides_v1') {
+        handleHeroUpdate();
+      }
+    });
+    window.addEventListener('hero-slides-updated', handleHeroUpdate);
+    
+    return () => {
+      window.removeEventListener('hero-slides-updated', handleHeroUpdate);
+    };
+  }, []);
 
-        // LISTINGS - Ensure it's always an array
-        let listingsArr = [];
-        if (listingsJson) {
-          if (Array.isArray(listingsJson)) {
-            listingsArr = listingsJson;
-          } else if (Array.isArray(listingsJson.data?.listings)) {
-            listingsArr = listingsJson.data.listings;
-          } else if (Array.isArray(listingsJson.listings)) {
-            listingsArr = listingsJson.listings;
-          } else if (Array.isArray(listingsJson.data)) {
-            listingsArr = listingsJson.data;
-          }
+  // Load hero slides
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const slidesJson = await getHeroSlides().catch(() => ({
+          data: { slides: [], isVisible: true },
+        }));
+        if (!alive) return;
+
+        const slidesData = slidesJson?.data || slidesJson || {};
+        const slideArr = Array.isArray(slidesData.slides)
+          ? slidesData.slides
+          : Array.isArray(slidesData)
+          ? slidesData
+          : [];
+
+        const isHeroVisible = slidesData.isVisible !== undefined ? slidesData.isVisible : true;
+
+        if (!isHeroVisible) {
+          setHeroSlides([]);
+        } else {
+          setHeroSlides(
+            slideArr.map((s, idx) => {
+              const durationMs =
+                Number(s?.durationMs || s?.duration) ||
+                (Number(s?.durationSeconds)
+                  ? Math.round(Number(s.durationSeconds) * 1000)
+                  : 0) ||
+                5000;
+              let finalUrl = null;
+              if (s?.url) {
+                const urlStr = String(s.url);
+                if (urlStr.startsWith('data:') || 
+                    urlStr.startsWith('http://') || 
+                    urlStr.startsWith('https://') ||
+                    urlStr.includes('/assets/') ||
+                    urlStr.startsWith('/src/')) {
+                  finalUrl = urlStr;
+                } else {
+                  finalUrl = normalizeImageUrl(urlStr);
+                }
+              }
+              if (!finalUrl) {
+                finalUrl = getFallbackImage(null, idx, "slide");
+              }
+              return {
+                ...s,
+                id: s?.id || s?.url || Math.random().toString(36).slice(2),
+                url: finalUrl,
+                durationMs,
+              };
+            })
+          );
         }
-        
-        setAllListings(
-          listingsArr.map((l) => {
-            const imgs = Array.isArray(l.images)
-              ? l.images
-              : Array.isArray(l.photo)
-              ? l.photo
-              : l.photo
-              ? [l.photo]
-              : [];
-            return {
-              ...l,
-              id: l.id || l._id || Math.random().toString(36).slice(2),
-              category: normalizeCategoryValue(l.category) || "",
-              images: imgs.map(normalizeImageUrl).filter(Boolean),
-            };
-          })
-        );
       } catch (e) {
-        console.error("Home fetch error", e);
-      } finally {
-        if (alive) setLoading(false);
+        console.error("Hero slides error", e);
       }
     })();
     return () => {
       alive = false;
     };
   }, []);
+  
+  // Set loading state from context
+  useEffect(() => {
+    setLoading(listingsLoading);
+  }, [listingsLoading]);
 
 
   useEffect(() => {
@@ -396,8 +404,40 @@ export default function Home() {
         if (active) setFooterConfig(defaultFooter);
       }
     })();
+    
+    // Listen for footer updates from other tabs
+    const handleStorageChange = (e) => {
+      if (e.key === 'site_footer_settings_v1' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          const isVisible = parsed.isVisible !== false;
+          if (isVisible) {
+            setFooterConfig({ ...defaultFooter, ...parsed });
+          } else {
+            setFooterConfig(null);
+          }
+        } catch {}
+      }
+    };
+    
+    const handleCustomUpdate = (e) => {
+      if (e.detail) {
+        const isVisible = e.detail.isVisible !== false;
+        if (isVisible) {
+          setFooterConfig({ ...defaultFooter, ...e.detail });
+        } else {
+          setFooterConfig(null);
+        }
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('footer-settings-updated', handleCustomUpdate);
+    
     return () => {
       active = false;
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('footer-settings-updated', handleCustomUpdate);
     };
   }, []);
 
@@ -469,7 +509,7 @@ export default function Home() {
       startFilter instanceof Date && !Number.isNaN(startFilter);
     const hasEndFilter = endFilter instanceof Date && !Number.isNaN(endFilter);
 
-    const filtered = (allListings || []).filter((l) => {
+    const filtered = (filteredListings || []).filter((l) => {
       const sameCategory =
         normalizeCategoryValue(l.category) ===
         normalizeCategoryValue(activeCategory);
@@ -606,7 +646,7 @@ export default function Home() {
 
     return sorted;
   }, [
-    allListings,
+    filteredListings,
     activeCategory,
     query,
     language,
@@ -1022,9 +1062,11 @@ export default function Home() {
               <div className="listing-grid">
                 {visibleListings.map((l, index) => {
                   const itemAccent = accentFor(l.category);
-                  const firstImg = normalizeImageUrl(l.images?.[0]);
+                  // Use new model: image is a base64 string
+                  const listingImage = l.image || ""; // base64 string
+                  const firstImg = listingImage || getFallbackImage(l.category, index, "listing");
                   // Use asset fallback if no image, then SVG placeholder as last resort
-                  const hasImage = firstImg && firstImg.trim() !== "";
+                  const hasImage = listingImage && listingImage.trim() !== "";
                   const assetFallback = getFallbackImage(l.category, index, "listing");
                   const fallbackImg = hasImage 
                     ? null 

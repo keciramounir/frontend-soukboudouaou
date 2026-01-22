@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Phone,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "../context/translationContext";
 import { useTheme } from "../context/themeContext";
+import { getFooterSettings } from "../api/dataService";
 import Logo from "./Logo";
 
 const DEFAULT_CALL_CENTERS = [
@@ -22,6 +23,56 @@ export default function Footer() {
   const navigate = useNavigate();
   const { t, language } = useTranslation();
   const { darkMode } = useTheme();
+  const [footerConfig, setFooterConfig] = useState(null);
+  
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const json = await getFooterSettings();
+        const footer = json?.data?.footer || json?.footer || null;
+        if (active) setFooterConfig(footer);
+      } catch {
+        if (active) setFooterConfig(null);
+      }
+    })();
+    
+    // Listen for footer updates from other tabs
+    const handleStorageChange = (e) => {
+      if (e.key === 'site_footer_settings_v1' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setFooterConfig(parsed);
+        } catch {}
+      }
+    };
+    
+    const handleCustomUpdate = (e) => {
+      if (e.detail) {
+        setFooterConfig(e.detail);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('footer-settings-updated', handleCustomUpdate);
+    
+    return () => {
+      active = false;
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('footer-settings-updated', handleCustomUpdate);
+    };
+  }, []);
+  
+  // Use footer config if available, otherwise use defaults
+  const callCenters = footerConfig?.callCenters || DEFAULT_CALL_CENTERS;
+  const aboutText = language === "ar" 
+    ? (footerConfig?.aboutAr || "منصة رائدة للتجارة الإلكترونية في الجزائر. نوفر أفضل المنتجات والخدمات مع ضمان الجودة والأمان.")
+    : (footerConfig?.aboutFr || "Plateforme de commerce en ligne leader en Algérie. Nous offrons les meilleurs produits et services avec garantie de qualité et sécurité.");
+  
+  // Check visibility
+  const isVisible = footerConfig?.isVisible !== false;
+  
+  if (!isVisible) return null;
 
   const socialLinks = [
     { icon: Facebook, href: "#", label: "Facebook" },
@@ -54,9 +105,7 @@ export default function Footer() {
             </div>
             
             <p className="text-sm leading-relaxed text-[var(--color-text-muted)]">
-              {language === "ar"
-                ? "منصة رائدة للتجارة الإلكترونية في الجزائر. نوفر أفضل المنتجات والخدمات مع ضمان الجودة والأمان."
-                : "Plateforme de commerce en ligne leader en Algérie. Nous offrons les meilleurs produits et services avec garantie de qualité et sécurité."}
+              {aboutText}
             </p>
 
             <div className="flex items-center gap-4">
@@ -90,7 +139,7 @@ export default function Footer() {
               {t("callCenterTitle") || (language === "ar" ? "مركز الاتصال" : "Centre d'appel")}
             </h4>
             <div className="space-y-2">
-              {DEFAULT_CALL_CENTERS.map((num, idx) => (
+              {callCenters.map((num, idx) => (
                 <a
                   key={idx}
                   href={`tel:${num.replace(/\s+/g, "")}`}

@@ -27,8 +27,14 @@ export function normalizeCategoryValue(category) {
 export function normalizeImageUrl(img) {
   const raw = String(img || "").trim();
   if (!raw) return "";
+  // If it's already a full URL, data URL, or asset import path, use as-is
   if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
   if (raw.startsWith("data:")) return raw;
+  // If it's an asset import (contains /assets/ or starts with /src/), use as-is
+  if (raw.includes("/assets/") || raw.startsWith("/src/")) return raw;
+  // If it's a blob URL (from FileReader or URL.createObjectURL), use as-is
+  if (raw.startsWith("blob:")) return raw;
+  // Backend uploads
   if (raw.startsWith("/uploads/")) return `${API_ORIGIN}${raw}`;
   return `${API_ORIGIN}/uploads/${raw.replace(/^\/+/, "")}`;
 }

@@ -11,7 +11,7 @@ export default function Logo({ className = "", alt = "Logo", forceDark = false, 
 
   useEffect(() => {
     let active = true;
-    (async () => {
+    const loadLogo = async () => {
       try {
         const json = await getLogoSettings();
         const logo = json?.data?.logo || json?.logo || { logoLight: "", logoDark: "" };
@@ -19,9 +19,33 @@ export default function Logo({ className = "", alt = "Logo", forceDark = false, 
       } catch {
         if (active) setLogoConfig({ logoLight: "", logoDark: "" });
       }
-    })();
+    };
+    
+    loadLogo();
+    
+    // Listen for logo updates from other tabs
+    const handleStorageChange = (e) => {
+      if (e.key === 'site_logo_settings_v1' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setLogoConfig(parsed);
+        } catch {}
+      }
+    };
+    
+    const handleCustomUpdate = (e) => {
+      if (e.detail) {
+        setLogoConfig(e.detail);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('logo-settings-updated', handleCustomUpdate);
+    
     return () => {
       active = false;
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('logo-settings-updated', handleCustomUpdate);
     };
   }, []);
 
@@ -29,9 +53,22 @@ export default function Logo({ className = "", alt = "Logo", forceDark = false, 
   const effectiveDarkMode = forceDark ? true : darkMode;
 
   // Use API logo if available, fallback to assets
+  const getLogoUrl = (logoPath) => {
+    if (!logoPath) return null;
+    const imgStr = String(logoPath).trim();
+    // If it's already a blob URL, data URL, asset import, or full URL, use as-is
+    if (imgStr.startsWith("blob:") || imgStr.startsWith("data:") || 
+        imgStr.startsWith("http://") || imgStr.startsWith("https://") ||
+        imgStr.includes("/assets/") || imgStr.startsWith("/src/")) {
+      return imgStr;
+    }
+    // Otherwise normalize for backend URLs
+    return normalizeImageUrl(imgStr);
+  };
+  
   const logoUrl = effectiveDarkMode
-    ? (logoConfig?.logoDark ? normalizeImageUrl(logoConfig.logoDark) : logoDark)
-    : (logoConfig?.logoLight ? normalizeImageUrl(logoConfig.logoLight) : logoLight);
+    ? (logoConfig?.logoDark ? getLogoUrl(logoConfig.logoDark) : logoDark)
+    : (logoConfig?.logoLight ? getLogoUrl(logoConfig.logoLight) : logoLight);
 
   const fallbackLogo = effectiveDarkMode ? logoDark : logoLight;
 

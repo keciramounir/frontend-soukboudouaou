@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
 
-import { createListing } from "../api/dataService";
+import { useListings } from "../context/ListingsContext";
+import { useAuth } from "../context/AuthContext";
+import { fileToBase64 } from "../utils/listingsStorage";
 import { useTheme } from "../context/themeContext";
 import { useTranslation } from "../context/translationContext";
 import { useToast } from "../context/ToastContext";
@@ -27,6 +29,8 @@ export default function CreateListing() {
   const { t, language } = useTranslation();
   const toast = useToast();
   const { options: categories } = useCategoryOptions();
+  const { createListing } = useListings();
+  const { user } = useAuth();
 
   const defaultCategory = useMemo(
     () => categories[0]?.value || "Poulet",
@@ -153,34 +157,52 @@ export default function CreateListing() {
         throw new Error(t("titleRequired") || "Le titre est requis");
       }
 
-      const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => {
-        if (k === "customFields") {
-          // Handle customFields array
-          if (Array.isArray(v) && v.length > 0) {
-            fd.append("customFields", JSON.stringify(v.filter(f => f.label && f.value)));
-          }
-        } else if (v !== "" && v !== null && v !== undefined) {
-          fd.append(k, v);
-        }
-      });
+      // Get current user ID
+      const createdBy = user?.id || user?._id || user?.email || "anonymous";
 
+      // Convert uploaded image to base64
+      let imageBase64 = "";
       if (file) {
-        fd.append("photo", file);
+        try {
+          imageBase64 = await fileToBase64(file);
+        } catch (error) {
+          console.error("Failed to convert image to base64:", error);
+          throw new Error(t("imageUploadFailed") || "Échec du téléchargement de l'image");
+        }
       }
 
-      const json = await createListing(fd);
-      const listing = json?.data?.listing;
+      // Create listing with normalized model
+      const listingData = {
+        title: form.title,
+        description: form.description || "",
+        price: Number(form.pricePerKg || 0),
+        category: form.category || "Poulet",
+        image: imageBase64, // base64 string
+        createdBy,
+        status: form.status || "published",
+        wilaya: form.wilaya || "",
+        listingDate: form.listingDate || "",
+        breedingDate: form.breedingDate || "",
+        preparationDate: form.preparationDate || "",
+        trainingType: form.trainingType || "",
+        medicationsUsed: form.medicationsUsed || "",
+        vaccinated: form.vaccinated || false,
+        quantity: Number(form.quantity || 0),
+        delivery: form.delivery || false,
+        averageWeight: Number(form.averageWeight || 0),
+      };
 
-      if (json?.success && listing) {
+      const listing = createListing(listingData);
+
+      if (listing) {
         toast.success(t("listingCreated") || "Annonce créée avec succès!");
         setTimeout(() => {
-          navigate(`/listing/${listing.id || listing._id}`);
+          navigate(`/listing/${listing.id}`);
         }, 1000);
         return;
       }
 
-      throw new Error(json?.message || t("createFailed") || "Échec de la création");
+      throw new Error(t("createFailed") || "Échec de la création");
     } catch (err) {
       console.error("Create listing error:", err);
       toast.error(

@@ -20,7 +20,8 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { getListingDetails, getListings, createInquiry } from "../api/dataService";
+import { createInquiry } from "../api/dataService";
+import { useListings } from "../context/ListingsContext";
 import { useAuth } from "../context/AuthContext";
 import { useTranslation } from "../context/translationContext";
 import { useCategoryOptions } from "../hooks/useCategoryOptions";
@@ -45,7 +46,7 @@ const DEFAULT_CALL_CENTER = [
   { label: "#3", phone: "+213791948072" },
 ];
 const CALL_CENTER = { name: "Souk Boudouaou" };
-const SAVED_KEY = "saved_listings_v1";
+// Saved listings now handled by ListingsContext
 
 // SVG placeholder generator (same as homepage)
 function svgPlaceholder({ label, accent, darkMode }) {
@@ -291,48 +292,30 @@ export default function ListingDetails() {
     (async () => {
       try {
         setLoading(true);
-        const json = await getListingDetails(id);
-        const item = json?.data?.listing || json?.listing || json?.data || null;
+        // Use ListingsContext to get listing
+        const item = getListing(id);
         if (!active) return;
+        
+        if (!item) {
+          // Listing not found
+          setListing(null);
+          setLoading(false);
+          return;
+        }
+        
         setListing(item);
         setActiveImg(0);
 
-        // Load first page of similar listings
+        // Load similar listings from context
         try {
-          const all = await getListings();
-          const src = Array.isArray(all.data)
-            ? all.data
-            : all.data?.listings || [];
           const category = item?.category || "Poulet";
-          const filtered = (src || [])
-            .map((l) => {
-              // Normalize images like in home.jsx
-              const imgs = Array.isArray(l.images)
-                ? l.images
-                : Array.isArray(l.photo)
-                ? l.photo
-                : l.photo
-                ? [l.photo]
-                : [];
-              return {
-                ...l,
-                images: imgs.map(normalizeImageUrl).filter(Boolean),
-              };
-            })
-            .filter(
-              (x) =>
-                normalizeCategoryValue(x.category || "Poulet") ===
-                normalizeCategoryValue(category)
-            )
-            .filter(
-              (x) => String(x.id || x._id) !== String(item?.id || item?._id)
-            );
+          const similarListings = filterByCategory(category)
+            .filter((l) => String(l.id || l._id) !== String(item?.id || item?._id))
+            .slice(0, 20);
           
-          const pageSize = 20;
-          const firstPage = filtered.slice(0, pageSize);
           if (active) {
-            setSimilar(firstPage);
-            setHasMoreSimilar(filtered.length > pageSize);
+            setSimilar(similarListings);
+            setHasMoreSimilar(similarListings.length >= 20);
           }
         } catch {
           if (active) setSimilar([]);
@@ -344,39 +327,28 @@ export default function ListingDetails() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, getListing, filterByCategory]);
 
   // Load more similar listings (pagination)
-  const loadMoreSimilar = async () => {
+  const loadMoreSimilar = () => {
     if (similarLoading || !hasMoreSimilar || !listing) return;
     
     setSimilarLoading(true);
     try {
-      const all = await getListings();
-      const src = Array.isArray(all.data)
-        ? all.data
-        : all.data?.listings || [];
       const category = listing?.category || "Poulet";
-      const filtered = (src || [])
-        .filter(
-          (x) =>
-            normalizeCategoryValue(x.category || "Poulet") ===
-            normalizeCategoryValue(category)
-        )
-        .filter(
-          (x) => String(x.id || x._id) !== String(listing?.id || listing?._id)
-        );
+      const allSimilar = filterByCategory(category)
+        .filter((x) => String(x.id || x._id) !== String(listing?.id || listing?._id));
       
       const pageSize = 20;
       const nextPage = similarPage + 1;
       const startIndex = (nextPage - 1) * pageSize;
       const endIndex = startIndex + pageSize;
-      const nextPageItems = filtered.slice(startIndex, endIndex);
+      const nextPageItems = allSimilar.slice(startIndex, endIndex);
       
       if (nextPageItems.length > 0) {
         setSimilar((prev) => [...prev, ...nextPageItems]);
         setSimilarPage(nextPage);
-        setHasMoreSimilar(endIndex < filtered.length);
+        setHasMoreSimilar(endIndex < allSimilar.length);
       } else {
         setHasMoreSimilar(false);
       }
@@ -387,39 +359,39 @@ export default function ListingDetails() {
     }
   };
 
+  const { getSaved, toggleSaved } = useListings();
+  const { user } = useAuth();
+  
+  // Check if listing is saved
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SAVED_KEY);
-      if (!raw) return setIsSaved(false);
-      const list = JSON.parse(raw);
-      const exists = Array.isArray(list)
-        ? list.some((item) => String(item.id || item._id) === String(id))
-        : false;
-      setIsSaved(exists);
-    } catch {
+    const currentUserId = user?.id || user?._id || user?.email;
+    if (!currentUserId || !listing) {
       setIsSaved(false);
+      return;
     }
-  }, [id]);
+    
+    const saved = getSaved(currentUserId);
+    const exists = saved.some((item) => String(item.id || item._id) === String(id));
+    setIsSaved(exists);
+  }, [id, listing, user, getSaved]);
 
   const listingUserId =
-    listing?.userId || listing?.createdBy || listing?.ownerId;
-  const isOwner = !!user?.id && String(user.id) === String(listingUserId);
+    listing?.createdBy || listing?.userId || listing?.ownerId;
+  const currentUserId = user?.id || user?._id || user?.email;
+  const isOwner = !!currentUserId && String(currentUserId) === String(listingUserId);
 
   // Use backend images with asset fallbacks (like in home.jsx)
-  const images = useMemo(() => {
-    if (!listing) return [];
-    // Handle both images array and photo field (like in home.jsx)
-    const imgs = Array.isArray(listing.images)
-      ? listing.images
-      : Array.isArray(listing.photo)
-      ? listing.photo
-      : listing.photo
-      ? [listing.photo]
-      : [];
-    const normalized = imgs.map(normalizeImageUrl).filter(Boolean);
-    return normalized;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listing?.images, listing?.photo]);
+  // Use new model: image is a base64 string
+  const listingImage = useMemo(() => {
+    if (!listing) return null;
+    // New model uses image: string (base64)
+    const img = listing.image || "";
+    if (img && img.trim()) {
+      return img; // Return base64 string directly
+    }
+    // Fallback if no image
+    return getFallbackImage(listing.category || category, 0);
+  }, [listing?.image, listing?.category, category]);
 
   const title =
     pickLocalized(listing?.title, language) || t("listing") || "Annonce";
@@ -902,14 +874,14 @@ export default function ListingDetails() {
             <div className="bg-white dark:bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden shadow-sm h-full w-full">
               {/* Main Image - Full height to match left column */}
               <div className="relative bg-[var(--color-surface-muted)] h-full min-h-[500px] lg:min-h-[600px]">
-                {images.length > 0 ? (
+                {listingImage ? (
                   <img
-                    src={images[activeImg]}
+                    src={listingImage}
                     alt={title}
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       // Try asset fallback first, then SVG placeholder
-                      const assetFallback = getFallbackImage(category, activeImg);
+                      const assetFallback = getFallbackImage(category, 0);
                       if (e.currentTarget.src !== assetFallback) {
                         e.currentTarget.src = assetFallback;
                       } else {
@@ -946,80 +918,8 @@ export default function ListingDetails() {
                     }}
                   />
                 )}
-                {images.length > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setActiveImg((p) => (p - 1 + images.length) % images.length)
-                      }
-                      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border-2 border-[var(--color-border)] rounded-full p-3 shadow-xl hover:bg-white dark:hover:bg-slate-800 transition-all z-20 hover:scale-110"
-                      style={{ borderColor: accent }}
-                      aria-label={t("previousImage") || "Image précédente"}
-                    >
-                      <ChevronLeft className="w-6 h-6" style={{ color: accent }} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveImg((p) => (p + 1) % images.length)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border-2 border-[var(--color-border)] rounded-full p-3 shadow-xl hover:bg-white dark:hover:bg-slate-800 transition-all z-20 hover:scale-110"
-                      style={{ borderColor: accent }}
-                      aria-label={t("nextImage") || "Image suivante"}
-                    >
-                      <ChevronRight className="w-6 h-6" style={{ color: accent }} />
-                    </button>
-                    {/* Image counter */}
-                    {images.length > 0 && (
-                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-medium z-20">
-                        {activeImg + 1} / {images.length}
-                      </div>
-                    )}
-                  </>
-                )}
+                {/* Single image - no carousel needed */}
               </div>
-
-              {/* Thumbnails */}
-              {images.length > 1 && (
-                <div className="p-4 border-t border-[var(--color-border)]">
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {images.map((img, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setActiveImg(idx)}
-                        className={`flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${
-                          idx === activeImg
-                            ? "border-[var(--category-accent)]"
-                            : "border-transparent opacity-60 hover:opacity-100"
-                        }`}
-                        style={{
-                          width: "80px",
-                          height: "60px",
-                        }}
-                      >
-                        <img
-                          src={img}
-                          alt={`${title}-${idx}`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            // Try asset fallback first, then SVG placeholder
-                            const assetFallback = getFallbackImage(category, idx);
-                            if (e.currentTarget.src !== assetFallback) {
-                              e.currentTarget.src = assetFallback;
-                            } else {
-                              e.currentTarget.src = svgPlaceholder({
-                                label: categoryLabel,
-                                accent: accent,
-                                darkMode: darkMode,
-                              });
-                            }
-                          }}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1087,8 +987,8 @@ export default function ListingDetails() {
               {similar.map((l) => {
                 const catLabel = labelFor(l.category || "");
                 const accentSim = accentFor(l.category || "");
-                // Use already normalized images array from filter mapping
-                const simImg = l.images?.[0] || null;
+                // Use new model: image is a base64 string
+                const simImg = l.image || null;
                 return (
                   <div
                     key={l.id || l._id}

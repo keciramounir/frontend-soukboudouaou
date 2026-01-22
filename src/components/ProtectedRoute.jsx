@@ -45,28 +45,22 @@ const ProtectedRoute = ({ children }) => {
 
   // For admin routes, ensure user is admin
   if (isAdminRoute && !isAdmin) {
-    // In mock mode, check if admin mode is enabled
-    if (isMockEnabled) {
-      const adminMode = localStorage.getItem("mock_admin_mode") === "1";
-      if (!adminMode && currentUser?.email === "imad@soukboudouaou.com") {
-        // Suggest enabling admin mode
-        return (
-          <div className="max-w-4xl mx-auto p-8">
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
-              <h2 className="text-xl font-bold mb-2">Admin Mode Required</h2>
-              <p className="mb-4">To access the admin panel, enable admin mode:</p>
-              <button
-                onClick={() => {
-                  localStorage.setItem("mock_admin_mode", "1");
-                  window.location.reload();
-                }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg"
-              >
-                Enable Admin Mode
-              </button>
-            </div>
-          </div>
-        );
+    // In mock mode, if it's the default user, automatically enable admin mode
+    if (isMockEnabled && currentUser?.email === "imad@soukboudouaou.com") {
+      try {
+        localStorage.setItem("mock_admin_mode", "1");
+        // Update user role in context and localStorage
+        const updatedUser = { ...currentUser, role: "super_admin" };
+        try {
+          localStorage.setItem("user", JSON.stringify(updatedUser));
+        } catch (error) {
+          console.error("Failed to update user:", error);
+        }
+        // Reload to apply changes
+        window.location.reload();
+        return null; // Prevent rendering during reload
+      } catch (error) {
+        console.error("Failed to enable admin mode:", error);
       }
     }
     return <Navigate to="/" replace />;

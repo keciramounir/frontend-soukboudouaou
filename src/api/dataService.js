@@ -122,28 +122,70 @@ function defaultListingImage(category) {
   return chickenImg;
 }
 
+/**
+ * Load listings from persistent storage (localStorage)
+ * CRITICAL: Never replace data URLs - they are real uploaded images
+ * Only normalize the data structure, never modify image URLs
+ */
 function loadMockListings() {
   const stored = safeGetItem("mock_listings");
   if (stored && stored?.data?.listings) {
+    // Normalize listings structure but PRESERVE all image URLs
     stored.data.listings = stored.data.listings.map((l, idx) => {
       const listing = {
         id: l.id || l._id || `mock-${idx + 1}`,
         ...l,
       };
-      // Replace image placeholders with actual imported images
-      if (listing.images && Array.isArray(listing.images)) {
-        listing.images = listing.images.map(img => {
-          if (img === "chicken.png" || img === "chicken") return chickenImg;
-          if (img === "turkey.png" || img === "turkey" || img === "chicken2.png") return turkeyImg;
-          return img;
-        });
-      } else if (!listing.images) {
+      
+      // Normalize images array - preserve data URLs and real URLs
+      // Convert photo field to images array if needed
+      if (listing.photo && !listing.images) {
+        listing.images = Array.isArray(listing.photo) ? listing.photo : [listing.photo];
+      }
+      
+      // Ensure images is always an array
+      if (!listing.images || !Array.isArray(listing.images)) {
+        listing.images = [];
+      }
+      
+      // CRITICAL: Preserve ALL data URLs - these are uploaded images
+      // Only convert placeholder strings (not data URLs) to fallbacks
+      listing.images = listing.images.map(img => {
+        const imgStr = String(img || "").trim();
+        
+        // PRESERVE: data URLs (uploaded images), blob URLs, full URLs, asset imports
+        if (imgStr.startsWith("data:") || 
+            imgStr.startsWith("blob:") || 
+            imgStr.startsWith("http://") || 
+            imgStr.startsWith("https://") ||
+            imgStr.includes("/assets/") || 
+            imgStr.startsWith("/src/")) {
+          return imgStr; // NEVER MODIFY - this is a real image
+        }
+        
+        // Only convert placeholder strings to fallbacks (for initial mock data)
+        if (imgStr === "chicken.png" || imgStr === "chicken" || imgStr.toLowerCase().includes("chicken")) {
+          return chickenImg;
+        }
+        if (imgStr === "turkey.png" || imgStr === "turkey" || imgStr.toLowerCase().includes("turkey") || imgStr === "chicken2.png") {
+          return turkeyImg;
+        }
+        
+        // If empty or invalid, return empty string (will use fallback in UI)
+        return imgStr || "";
+      }).filter(Boolean);
+      
+      // Only add fallback if NO images exist (not even placeholders)
+      if (listing.images.length === 0) {
         listing.images = [defaultListingImage(listing.category)];
       }
+      
       return listing;
     });
     return stored;
   }
+  
+  // Initial load from mock file - convert placeholders to assets
   const cloned = structuredClone(listingsMockFile);
   if (cloned?.data?.listings) {
     cloned.data.listings = cloned.data.listings.map((l, idx) => {
@@ -151,24 +193,82 @@ function loadMockListings() {
         id: l.id || l._id || `mock-${idx + 1}`,
         ...l,
       };
-      // Replace image placeholders with actual imported images
-      if (listing.images && Array.isArray(listing.images)) {
-        listing.images = listing.images.map(img => {
-          if (img === "chicken.png" || img === "chicken") return chickenImg;
-          if (img === "turkey.png" || img === "turkey" || img === "chicken2.png") return turkeyImg;
-          return img;
-        });
-      } else if (!listing.images) {
+      
+      // Normalize images array
+      if (listing.photo && !listing.images) {
+        listing.images = Array.isArray(listing.photo) ? listing.photo : [listing.photo];
+      }
+      
+      if (!listing.images || !Array.isArray(listing.images)) {
+        listing.images = [];
+      }
+      
+      // Convert placeholder strings to asset imports (only for initial mock data)
+      listing.images = listing.images.map(img => {
+        const imgStr = String(img || "").trim();
+        
+        // Preserve real URLs
+        if (imgStr.startsWith("data:") || 
+            imgStr.startsWith("blob:") || 
+            imgStr.startsWith("http://") || 
+            imgStr.startsWith("https://") ||
+            imgStr.includes("/assets/") || 
+            imgStr.startsWith("/src/")) {
+          return imgStr;
+        }
+        
+        // Convert placeholders
+        if (imgStr === "chicken.png" || imgStr === "chicken" || imgStr.toLowerCase().includes("chicken")) {
+          return chickenImg;
+        }
+        if (imgStr === "turkey.png" || imgStr === "turkey" || imgStr.toLowerCase().includes("turkey") || imgStr === "chicken2.png") {
+          return turkeyImg;
+        }
+        
+        return imgStr || "";
+      }).filter(Boolean);
+      
+      if (listing.images.length === 0) {
         listing.images = [defaultListingImage(listing.category)];
       }
+      
       return listing;
     });
   }
   return cloned;
 }
 
+/**
+ * Save listings to persistent storage
+ * CRITICAL: Save images array exactly as provided - never modify data URLs
+ */
 function saveMockListings(listings) {
-  const payload = { success: true, data: { listings } };
+  // Normalize listings before saving - ensure consistent structure
+  const normalized = listings.map(l => {
+    const listing = { ...l };
+    
+    // Ensure images is always an array
+    if (listing.photo && !listing.images) {
+      listing.images = Array.isArray(listing.photo) ? listing.photo : [listing.photo];
+    }
+    if (!listing.images || !Array.isArray(listing.images)) {
+      listing.images = [];
+    }
+    
+    // CRITICAL: Preserve all image URLs exactly as they are
+    // Data URLs must be saved as-is - they are uploaded images
+    listing.images = listing.images.filter(Boolean);
+    
+    // Ensure id exists
+    if (!listing.id && !listing._id) {
+      listing.id = `mock-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+    listing._id = listing.id || listing._id;
+    
+    return listing;
+  });
+  
+  const payload = { success: true, data: { listings: normalized } };
   const saved = safeSetItem("mock_listings", payload);
   if (!saved) {
     console.error("Failed to save listings to localStorage");
@@ -262,8 +362,12 @@ export async function getListingDetails(id) {
 
 export async function getMyListings() {
   if (isMockListingsEnabled()) {
-    const base = loadMockMyListings();
-    return { success: true, data: base?.data || [] };
+    // Get full listings data with images, not just simplified my listings
+    const base = loadMockListings();
+    const allListings = base?.data?.listings || [];
+    // For mock mode, return all listings (in real app, would filter by userId)
+    // But preserve full listing data including images
+    return { success: true, data: allListings };
   }
   try {
     const res = await api.get(apiPath("/user/my-listings"));
@@ -278,16 +382,27 @@ export async function getMyListings() {
   }
 }
 
+/**
+ * Create a new listing
+ * CRITICAL: Images are converted to data URLs and saved persistently
+ * Listing model: id, title, description, price, category, images[], createdBy, createdAt
+ */
 export async function createListing(fd) {
   if (isMockListingsEnabled()) {
     const base = loadMockListings();
     const listings = base?.data?.listings || [];
     const entries = Object.fromEntries(fd.entries());
     const category = entries.category || "Poulet";
-    const id = `mock-${Date.now()}`;
     
-    // Handle images - if files are provided, create object URLs, otherwise use default
-    let images = [defaultListingImage(category)];
+    // Generate unique ID
+    const id = `listing-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    
+    // Get current user ID for createdBy field
+    const currentUser = safeGetItem("user");
+    const createdBy = currentUser?.id || currentUser?._id || currentUser?.email || "anonymous";
+    
+    // Handle images - convert uploaded files to data URLs for persistence
+    let images = [];
     if (fd instanceof FormData) {
       const imageFiles = [];
       // Check for photo files (could be photo, photos, image, images, etc.)
@@ -298,22 +413,41 @@ export async function createListing(fd) {
       }
       
       if (imageFiles.length > 0) {
-        // Create object URLs for the files
-        images = imageFiles.map(file => URL.createObjectURL(file));
+        // Convert files to data URLs for persistence in localStorage
+        // Data URLs are the ONLY way to persist images in frontend-only mock mode
+        const dataUrlPromises = imageFiles.map(file => {
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result); // Returns data URL
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+          });
+        });
+        const dataUrls = await Promise.all(dataUrlPromises);
+        images = dataUrls.filter(Boolean); // Filter out any failed reads
       }
     }
     
+    // Only use default fallback image if NO images were uploaded
+    if (images.length === 0) {
+      images = [defaultListingImage(category)];
+    }
+    
+    // Normalized listing model - single source of truth
     const listing = {
       id,
-      _id: id,
+      _id: id, // Keep both for compatibility
       title: entries.title || "Annonce",
       description: entries.description || entries.details || "",
       price: Number(entries.pricePerKg || entries.price || 0) || 0,
       pricePerKg: Number(entries.pricePerKg || entries.price || 0) || 0,
       unit: entries.unit || "kg",
-      createdAt: new Date().toISOString(),
-      status: entries.status || "published" || "available",
       category,
+      images, // Array of image URLs (data URLs for uploaded images)
+      createdBy, // User who created this listing
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: entries.status || "published",
       wilaya: entries.wilaya || "",
       commune: entries.commune || "",
       listingDate: entries.listingDate || "",
@@ -322,42 +456,62 @@ export async function createListing(fd) {
       trainingType: entries.trainingType || "",
       medicationsUsed: entries.medicationsUsed || "",
       vaccinated: entries.vaccinated === "true" || entries.vaccinated === true,
-      images,
       views: 0,
       inquiries: 0,
       quantity: Number(entries.quantity || 0) || 0,
       delivery: entries.delivery === "true" || entries.delivery === true,
       averageWeight: Number(entries.averageWeight || 0) || 0,
     };
+    
+    // Save to persistent storage
     const next = [listing, ...listings];
     saveMockListings(next);
+    
+    // Also update my listings index (for quick lookup)
     const myBase = loadMockMyListings();
-    const myNext = [{ _id: id, title: listing.title }, ...(myBase?.data || [])];
+    const myNext = [{ _id: id, title: listing.title, createdBy }, ...(myBase?.data || [])];
     saveMockMyListings(myNext);
+    
     return { success: true, data: { listing } };
   }
   const res = await api.post(apiPath("/listings"), fd);
   return res.data;
 }
 
+/**
+ * Update an existing listing
+ * CRITICAL: Preserves existing images if no new image is uploaded
+ * Replaces images only if new files are provided
+ */
 export async function updateListing(id, fd) {
   if (isMockListingsEnabled()) {
     const base = loadMockListings();
     const listings = base?.data?.listings || [];
     const idx = listings.findIndex((l) => String(l.id || l._id) === String(id));
     if (idx === -1) return { success: false, message: "Not found" };
+    
     const entries = Object.fromEntries(fd.entries());
-    const next = { ...listings[idx] };
+    const existing = listings[idx];
+    const next = { ...existing };
+    
+    // CRITICAL: Preserve existing images array - these are real uploaded images
+    // Only replace if new images are uploaded
+    if (!next.images || !Array.isArray(next.images)) {
+      // Normalize from photo field if needed
+      if (next.photo) {
+        next.images = Array.isArray(next.photo) ? next.photo : [next.photo];
+      } else {
+        next.images = [];
+      }
+    }
+    
+    // Update fields
     if (entries.title) next.title = entries.title;
     if (entries.description || entries.details) {
       next.description = entries.description || entries.details;
     }
     if (entries.category) {
       next.category = entries.category;
-      // Update image if category changed and no new image uploaded
-      if (!entries.photo && !entries.image) {
-        next.images = [defaultListingImage(entries.category)];
-      }
     }
     if (entries.wilaya) next.wilaya = entries.wilaya;
     if (entries.commune) next.commune = entries.commune;
@@ -374,11 +528,13 @@ export async function updateListing(id, fd) {
     if (entries.trainingType) next.trainingType = entries.trainingType;
     if (entries.medicationsUsed) next.medicationsUsed = entries.medicationsUsed;
     if (entries.vaccinated !== undefined) {
-      next.vaccinated =
-        entries.vaccinated === "true" || entries.vaccinated === true;
+      next.vaccinated = entries.vaccinated === "true" || entries.vaccinated === true;
     }
     
-    // Handle image updates
+    // Update timestamp
+    next.updatedAt = new Date().toISOString();
+    
+    // Handle image updates - ONLY if new files are uploaded
     if (fd instanceof FormData) {
       const imageFiles = [];
       for (const [key, value] of fd.entries()) {
@@ -386,8 +542,24 @@ export async function updateListing(id, fd) {
           imageFiles.push(value);
         }
       }
+      
       if (imageFiles.length > 0) {
-        next.images = imageFiles.map(file => URL.createObjectURL(file));
+        // New images uploaded - convert to data URLs and REPLACE existing images
+        const dataUrlPromises = imageFiles.map(file => {
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result); // Returns data URL
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+          });
+        });
+        const dataUrls = await Promise.all(dataUrlPromises);
+        next.images = dataUrls.filter(Boolean); // Replace with new images
+      }
+      // If no new images uploaded, existing images are already preserved above
+      // Only use fallback if no images exist at all
+      if (next.images.length === 0) {
+        next.images = [defaultListingImage(next.category || entries.category || "Poulet")];
       }
     }
     
@@ -821,35 +993,66 @@ function saveLocalMovingHeader(payload) {
   const saved = safeSetItem(MOVING_HEADER_KEY, payload);
   if (!saved) {
     console.error("Failed to save moving header settings");
+  } else {
+    // Trigger storage event for cross-tab sync
+    try {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: MOVING_HEADER_KEY,
+        newValue: JSON.stringify(payload),
+        storageArea: localStorage
+      }));
+      // Also dispatch custom event for same-tab updates
+      window.dispatchEvent(new CustomEvent('moving-header-updated', {
+        detail: payload
+      }));
+    } catch (e) {
+      // ignore event errors
+    }
   }
   return payload;
 }
 
 export async function updateMovingHeaderSettings(payload) {
+  // Extract all fields from payload
+  const items = payload?.items || payload?.data?.items || [];
+  const fontConfig = payload?.fontConfig || payload?.data?.fontConfig || DEFAULT_MOVING_HEADER_FONT_CONFIG;
+  const prefixFr = payload?.prefixFr || payload?.data?.prefixFr || "";
+  const prefixAr = payload?.prefixAr || payload?.data?.prefixAr || "";
+  const textColor = payload?.textColor || payload?.data?.textColor || "";
+  const backgroundColor = payload?.backgroundColor || payload?.data?.backgroundColor || "";
+  const animationDuration = payload?.animationDuration !== undefined ? payload.animationDuration : (payload?.data?.animationDuration !== undefined ? payload.data.animationDuration : 25);
+  const heightPx = payload?.heightPx !== undefined ? payload.heightPx : (payload?.data?.heightPx !== undefined ? payload.data.heightPx : 60);
+  const translateWilayaAr = payload?.translateWilayaAr !== undefined ? payload.translateWilayaAr : (payload?.data?.translateWilayaAr !== undefined ? payload.data.translateWilayaAr : true);
+  
+  const next = {
+    success: true,
+    data: {
+      items,
+      fontConfig,
+      prefixFr,
+      prefixAr,
+      textColor,
+      backgroundColor,
+      animationDuration,
+      heightPx,
+      translateWilayaAr,
+    },
+  };
+  
   if (isMockEnabled()) {
-    const next = {
-      success: true,
-      data: {
-        items: payload?.items || payload?.data?.items || [],
-        fontConfig: payload?.fontConfig || payload?.data?.fontConfig || DEFAULT_MOVING_HEADER_FONT_CONFIG,
-      },
-    };
     saveLocalMovingHeader(next);
     return next;
   }
   
   try {
     const res = await api.put(apiPath("/admin/site/moving-header"), payload);
-    return res.data;
+    // Also save to localStorage as backup
+    if (res.data) {
+      saveLocalMovingHeader({ success: true, data: res.data });
+    }
+    return res.data || next;
   } catch {
     // Fallback to localStorage
-    const next = {
-      success: true,
-      data: {
-        items: payload?.items || payload?.data?.items || [],
-        fontConfig: payload?.fontConfig || payload?.data?.fontConfig || DEFAULT_MOVING_HEADER_FONT_CONFIG,
-      },
-    };
     saveLocalMovingHeader(next);
     return next;
   }
@@ -870,6 +1073,16 @@ function loadLocalHeroSlides() {
 function saveLocalHeroSlides(payload) {
   try {
     localStorage.setItem(HERO_KEY, JSON.stringify(payload));
+    // Trigger storage event for cross-tab sync
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: HERO_KEY,
+      newValue: JSON.stringify(payload),
+      storageArea: localStorage
+    }));
+    // Also dispatch custom event for same-tab updates
+    window.dispatchEvent(new CustomEvent('hero-slides-updated', {
+      detail: payload
+    }));
   } catch {
     // ignore
   }
@@ -877,6 +1090,11 @@ function saveLocalHeroSlides(payload) {
 }
 
 export async function getHeroSlides() {
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
+    return loadLocalHeroSlides();
+  }
+  
   try {
     const res = await api.get(apiPath("/public/site/hero-slides"));
     return res.data;
@@ -887,6 +1105,11 @@ export async function getHeroSlides() {
 }
 
 export async function adminGetHeroSlides() {
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
+    return loadLocalHeroSlides();
+  }
+  
   try {
     const res = await api.get(apiPath("/admin/site/hero-slides"));
     return res.data;
@@ -899,10 +1122,26 @@ export async function adminAddHeroSlide({ file, durationSeconds }) {
   if (isMockEnabled()) {
     const base = loadLocalHeroSlides();
     const slides = base?.data?.slides || [];
-    const url = URL.createObjectURL(file);
+    
+    // Convert file to base64 for persistence
+    let imageBase64 = "";
+    if (file) {
+      try {
+        const reader = new FileReader();
+        imageBase64 = await new Promise((resolve, reject) => {
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      } catch (error) {
+        console.error("Failed to convert hero slide image to base64:", error);
+        throw new Error("Failed to process image");
+      }
+    }
+    
     const next = {
       id: `hero-${Date.now()}`,
-      url,
+      url: imageBase64, // base64 data URL for persistence
       durationMs: (durationSeconds ?? 5) * 1000,
       durationSeconds: durationSeconds ?? 5,
     };
@@ -920,11 +1159,28 @@ export async function adminAddHeroSlide({ file, durationSeconds }) {
   } catch {
     const base = loadLocalHeroSlides();
     const slides = base?.data?.slides || [];
-    const url = URL.createObjectURL(file);
+    
+    // Convert file to base64 for persistence
+    let imageBase64 = "";
+    if (file) {
+      try {
+        const reader = new FileReader();
+        imageBase64 = await new Promise((resolve, reject) => {
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      } catch (error) {
+        console.error("Failed to convert hero slide image to base64:", error);
+        // Fallback to empty string
+      }
+    }
+    
     const next = {
       id: `hero-${Date.now()}`,
-      url,
+      url: imageBase64, // base64 data URL for persistence
       durationSeconds: durationSeconds ?? 5,
+      durationMs: (durationSeconds ?? 5) * 1000,
     };
     const payload = { success: true, data: { slides: [...slides, next] } };
     return saveLocalHeroSlides(payload);
@@ -1017,12 +1273,24 @@ function loadLocalCta() {
 function saveLocalCta(payload) {
   try {
     localStorage.setItem(CTA_KEY, JSON.stringify(payload));
+    // Trigger storage event for cross-tab sync
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: CTA_KEY,
+      newValue: JSON.stringify(payload),
+      storageArea: localStorage
+    }));
+    window.dispatchEvent(new CustomEvent('cta-settings-updated', { detail: payload }));
   } catch {
     // ignore
   }
 }
 
 export async function getCtaSettings() {
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
+    return { success: true, data: { cta: loadLocalCta() } };
+  }
+  
   try {
     const res = await api.get(apiPath("/public/site/cta"));
     return res.data;
@@ -1036,6 +1304,11 @@ export async function getCtaSettings() {
 }
 
 export async function adminGetCtaSettings() {
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
+    return { success: true, data: { cta: loadLocalCta() } };
+  }
+  
   try {
     const res = await api.get(apiPath("/admin/site/cta"));
     return res.data;
@@ -1045,42 +1318,54 @@ export async function adminGetCtaSettings() {
 }
 
 export async function adminUpdateCtaSettings(payload) {
-  if (isMockEnabled()) {
-    const current = loadLocalCta();
-    const next = { ...current };
-    
-    const isFormData =
-      typeof FormData !== "undefined" && payload instanceof FormData;
-    
-    if (isFormData) {
-      // Handle FormData - extract text fields and handle image
-      const imageFile = payload.get("image") || payload.get("imageUrl");
-      if (imageFile instanceof File) {
-        next.imageUrl = URL.createObjectURL(imageFile);
+  const current = loadLocalCta();
+  const next = { ...current };
+  
+  const isFormData =
+    typeof FormData !== "undefined" && payload instanceof FormData;
+  
+  if (isFormData) {
+    // Handle FormData - extract text fields and handle image
+    const imageFile = payload.get("image") || payload.get("imageUrl");
+    if (imageFile instanceof File) {
+      // Convert to base64 for persistence
+      try {
+        const reader = new FileReader();
+        next.imageUrl = await new Promise((resolve, reject) => {
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(imageFile);
+        });
+      } catch (error) {
+        console.error("Failed to convert CTA image to base64:", error);
+        // Keep existing imageUrl if conversion fails
       }
-      
-      // Extract text fields from FormData
-      const titleFr = payload.get("titleFr");
-      const titleAr = payload.get("titleAr");
-      const subtitleFr = payload.get("subtitleFr");
-      const subtitleAr = payload.get("subtitleAr");
-      const buttonFr = payload.get("buttonFr");
-      const buttonAr = payload.get("buttonAr");
-      const link = payload.get("link");
-      
-      if (titleFr) next.titleFr = titleFr;
-      if (titleAr) next.titleAr = titleAr;
-      if (subtitleFr) next.subtitleFr = subtitleFr;
-      if (subtitleAr) next.subtitleAr = subtitleAr;
-      if (buttonFr) next.buttonFr = buttonFr;
-      if (buttonAr) next.buttonAr = buttonAr;
-      if (link) next.link = link;
-    } else {
-      // Handle JSON payload
-      const ctaData = payload?.cta || payload || {};
-      Object.assign(next, ctaData);
     }
     
+    // Extract text fields from FormData
+    const titleFr = payload.get("titleFr");
+    const titleAr = payload.get("titleAr");
+    const subtitleFr = payload.get("subtitleFr");
+    const subtitleAr = payload.get("subtitleAr");
+    const buttonFr = payload.get("buttonFr");
+    const buttonAr = payload.get("buttonAr");
+    const link = payload.get("link");
+    
+    if (titleFr) next.titleFr = titleFr;
+    if (titleAr) next.titleAr = titleAr;
+    if (subtitleFr) next.subtitleFr = subtitleFr;
+    if (subtitleAr) next.subtitleAr = subtitleAr;
+    if (buttonFr) next.buttonFr = buttonFr;
+    if (buttonAr) next.buttonAr = buttonAr;
+    if (link) next.link = link;
+  } else {
+    // Handle JSON payload
+    const ctaData = payload?.cta || payload || {};
+    Object.assign(next, ctaData);
+  }
+  
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
     saveLocalCta(next);
     return { success: true, data: { cta: next } };
   }
@@ -1117,12 +1402,24 @@ function loadLocalFooter() {
 function saveLocalFooter(payload) {
   try {
     localStorage.setItem(FOOTER_KEY, JSON.stringify(payload));
+    // Trigger storage event for cross-tab sync
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: FOOTER_KEY,
+      newValue: JSON.stringify(payload),
+      storageArea: localStorage
+    }));
+    window.dispatchEvent(new CustomEvent('footer-settings-updated', { detail: payload }));
   } catch {
     // ignore
   }
 }
 
 export async function getFooterSettings() {
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
+    return { success: true, data: { footer: loadLocalFooter() } };
+  }
+  
   try {
     const res = await api.get(apiPath("/public/site/footer"));
     return res.data;
@@ -1133,6 +1430,11 @@ export async function getFooterSettings() {
 }
 
 export async function adminGetFooterSettings() {
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
+    return { success: true, data: { footer: loadLocalFooter() } };
+  }
+  
   try {
     const res = await api.get(apiPath("/admin/site/footer"));
     return res.data;
@@ -1142,8 +1444,22 @@ export async function adminGetFooterSettings() {
 }
 
 export async function adminUpdateFooterSettings(payload) {
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
+    const next = {
+      ...loadLocalFooter(),
+      ...(payload?.footer || payload || {}),
+    };
+    saveLocalFooter(next);
+    return { success: true, data: { footer: next } };
+  }
+  
   try {
     const res = await api.put(apiPath("/admin/site/footer"), payload);
+    // Also save to localStorage as backup
+    if (res.data?.footer) {
+      saveLocalFooter(res.data.footer);
+    }
     return res.data;
   } catch {
     const next = {
@@ -1177,12 +1493,24 @@ function loadLocalLogo() {
 function saveLocalLogo(payload) {
   try {
     localStorage.setItem(LOGO_KEY, JSON.stringify(payload));
+    // Trigger storage event for cross-tab sync
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: LOGO_KEY,
+      newValue: JSON.stringify(payload),
+      storageArea: localStorage
+    }));
+    window.dispatchEvent(new CustomEvent('logo-settings-updated', { detail: payload }));
   } catch {
     // ignore
   }
 }
 
 export async function getLogoSettings() {
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
+    return { success: true, data: { logo: loadLocalLogo() } };
+  }
+  
   try {
     const res = await api.get(apiPath("/public/site/logo"));
     return res.data;
@@ -1193,6 +1521,11 @@ export async function getLogoSettings() {
 }
 
 export async function adminGetLogoSettings() {
+  // In mock mode, always use localStorage
+  if (isMockEnabled()) {
+    return { success: true, data: { logo: loadLocalLogo() } };
+  }
+  
   try {
     const res = await api.get(apiPath("/admin/site/logo"));
     return res.data;
@@ -1212,10 +1545,30 @@ export async function adminUpdateLogoSettings(formData) {
       const logoDarkFile = formData.get("logoDark");
       
       if (logoLightFile instanceof File) {
-        next.logoLight = URL.createObjectURL(logoLightFile);
+        // Convert to base64 for persistence
+        try {
+          const reader = new FileReader();
+          next.logoLight = await new Promise((resolve, reject) => {
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(logoLightFile);
+          });
+        } catch (error) {
+          console.error("Failed to convert logo light to base64:", error);
+        }
       }
       if (logoDarkFile instanceof File) {
-        next.logoDark = URL.createObjectURL(logoDarkFile);
+        // Convert to base64 for persistence
+        try {
+          const reader = new FileReader();
+          next.logoDark = await new Promise((resolve, reject) => {
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(logoDarkFile);
+          });
+        } catch (error) {
+          console.error("Failed to convert logo dark to base64:", error);
+        }
       }
     } else {
       // Handle JSON payload

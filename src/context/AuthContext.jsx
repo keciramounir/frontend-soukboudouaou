@@ -133,15 +133,104 @@ export function AuthProvider({ children }) {
   const login = async ({ identifier, password }) => {
     // Mock login for demo
     if (isMockEnabled()) {
-      // Check default mock credentials first
+      // FAST LOGIN: Pre-defined users for quick access
+      const fastUsers = {
+        "imad@soukboudouaou.com": {
+          password: "admin2025$",
+          user: {
+            _id: "admin-1",
+            email: "imad@soukboudouaou.com",
+            username: "imad",
+            fullName: "Imad Soukboudouaou",
+            phone: "0550 12 34 56",
+            wilaya: "Algiers",
+            role: "super_admin",
+            verified: true,
+            isActive: true,
+            createdAt: "2025-10-10T09:00:00.000Z"
+          }
+        },
+        "admin@test.com": {
+          password: "admin123",
+          user: {
+            _id: "admin-2",
+            email: "admin@test.com",
+            username: "admin",
+            fullName: "Admin User",
+            phone: "0550 00 00 01",
+            wilaya: "Algiers",
+            role: "ADMIN",
+            verified: true,
+            isActive: true,
+            createdAt: "2025-10-10T09:00:00.000Z"
+          }
+        },
+        "user1@test.com": {
+          password: "user123",
+          user: {
+            _id: "user-1",
+            email: "user1@test.com",
+            username: "user1",
+            fullName: "User One",
+            phone: "0550 00 00 02",
+            wilaya: "Oran",
+            role: "user",
+            verified: true,
+            isActive: true,
+            createdAt: "2025-10-10T09:00:00.000Z"
+          }
+        },
+        "user2@test.com": {
+          password: "user123",
+          user: {
+            _id: "user-2",
+            email: "user2@test.com",
+            username: "user2",
+            fullName: "User Two",
+            phone: "0550 00 00 03",
+            wilaya: "Constantine",
+            role: "user",
+            verified: true,
+            isActive: true,
+            createdAt: "2025-10-10T09:00:00.000Z"
+          }
+        }
+      };
+      
+      const emailLower = identifier?.toLowerCase();
+      const fastUser = fastUsers[emailLower];
+      
+      // Check fast login users first
+      if (fastUser && password === fastUser.password) {
+        try {
+          if (fastUser.user.role === "super_admin") {
+            localStorage.setItem("mock_admin_mode", "1");
+          }
+        } catch (error) {
+          console.error("Failed to set admin mode:", error);
+        }
+        
+        const mockToken = "mock-jwt-token-" + Date.now();
+        const mockRefreshToken = "mock-refresh-token-" + Date.now();
+        saveSession(fastUser.user, mockToken, mockRefreshToken);
+        return { success: true, user: fastUser.user };
+      }
+      
+      // Check default mock credentials (backward compatibility)
       const mockEmail = "imad@soukboudouaou.com";
       const mockPassword = "admin2025$";
       const isEmailMatch = identifier?.toLowerCase() === mockEmail.toLowerCase();
       const isPasswordMatch = password === mockPassword;
       
       if (isEmailMatch && isPasswordMatch) {
-        // Load default mock user - can be admin or user based on localStorage setting
-        const adminMode = localStorage.getItem("mock_admin_mode") === "1";
+        // Automatically enable admin mode for default credentials
+        try {
+          localStorage.setItem("mock_admin_mode", "1");
+        } catch (error) {
+          console.error("Failed to set admin mode:", error);
+        }
+        
+        // Always set as super_admin for default credentials
         const mockUser = {
           _id: "u1",
           fullName: "Imad Soukboudouaou",
@@ -149,7 +238,7 @@ export function AuthProvider({ children }) {
           email: "imad@soukboudouaou.com",
           username: "imad",
           wilaya: "Algiers",
-          role: adminMode ? "super_admin" : "user",
+          role: "super_admin",
           verified: true,
           isActive: true,
           createdAt: "2025-10-10T09:00:00.000Z"

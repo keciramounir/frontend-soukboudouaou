@@ -39,25 +39,28 @@ export default function MovingHeader({ sidebarOpen }) {
     let active = true;
     (async () => {
       try {
-        const cached = localStorage.getItem("moving_header");
+        // Try new key first, then fallback to old key
+        const cached = localStorage.getItem("site_moving_header_v1") || localStorage.getItem("moving_header");
         if (cached && active) {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed?.items)) setItems(parsed.items);
-          if (parsed?.fontConfig) setFontConfig(parsed.fontConfig);
-          if (parsed?.prefixFr !== undefined)
-            setPrefixFr(String(parsed.prefixFr || ""));
-          if (parsed?.prefixAr !== undefined)
-            setPrefixAr(String(parsed.prefixAr || ""));
-          if (parsed?.textColor !== undefined)
-            setTextColor(String(parsed.textColor || ""));
-          if (parsed?.backgroundColor !== undefined)
-            setBackgroundColorOverride(String(parsed.backgroundColor || ""));
-          if (parsed?.animationDuration !== undefined)
-            setAnimationDuration(Number(parsed.animationDuration || 22));
-          if (parsed?.heightPx !== undefined)
-            setHeightPx(Number(parsed.heightPx || 60));
-          if (parsed?.translateWilayaAr !== undefined)
-            setTranslateWilayaAr(Boolean(parsed.translateWilayaAr));
+          // Handle both old format (direct object) and new format (wrapped in data)
+          const data = parsed?.data || parsed;
+          if (Array.isArray(data?.items)) setItems(data.items);
+          if (data?.fontConfig) setFontConfig(data.fontConfig);
+          if (data?.prefixFr !== undefined)
+            setPrefixFr(String(data.prefixFr || ""));
+          if (data?.prefixAr !== undefined)
+            setPrefixAr(String(data.prefixAr || ""));
+          if (data?.textColor !== undefined)
+            setTextColor(String(data.textColor || ""));
+          if (data?.backgroundColor !== undefined)
+            setBackgroundColorOverride(String(data.backgroundColor || ""));
+          if (data?.animationDuration !== undefined)
+            setAnimationDuration(Number(data.animationDuration || 22));
+          if (data?.heightPx !== undefined)
+            setHeightPx(Number(data.heightPx || 60));
+          if (data?.translateWilayaAr !== undefined)
+            setTranslateWilayaAr(Boolean(data.translateWilayaAr));
         }
       } catch {
         // ignore cache errors
@@ -87,6 +90,7 @@ export default function MovingHeader({ sidebarOpen }) {
         setAnimationDuration(nextAnimDuration);
         setHeightPx(nextHeightPx);
         setTranslateWilayaAr(nextTranslateWilayaAr);
+        // Cache for quick access (backward compatibility)
         try {
           localStorage.setItem(
             "moving_header",
@@ -115,7 +119,8 @@ export default function MovingHeader({ sidebarOpen }) {
 
   useEffect(() => {
     const onStorage = (e) => {
-      if (e.key !== "moving_header") return;
+      // Listen for both keys (old "moving_header" and new "site_moving_header_v1")
+      if (e.key !== "moving_header" && e.key !== "site_moving_header_v1") return;
       try {
         const parsed = JSON.parse(e.newValue || "");
         if (Array.isArray(parsed?.items)) setItems(parsed.items);
@@ -146,24 +151,24 @@ export default function MovingHeader({ sidebarOpen }) {
         setPrefixFr(String(detail.prefixFr || ""));
       if (detail.prefixAr !== undefined)
         setPrefixAr(String(detail.prefixAr || ""));
-      if (detail.textColor !== undefined)
-        setTextColor(String(detail.textColor || ""));
-      if (detail.backgroundColor !== undefined)
-        setBackgroundColorOverride(String(detail.backgroundColor || ""));
-      if (detail.animationDuration !== undefined)
-        setAnimationDuration(Number(detail.animationDuration || 22));
-      if (detail.heightPx !== undefined)
-        setHeightPx(Number(detail.heightPx || 60));
-      if (detail.translateWilayaAr !== undefined)
-        setTranslateWilayaAr(Boolean(detail.translateWilayaAr));
-    };
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("moving-header-updated", onCustom);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("moving-header-updated", onCustom);
-    };
-  }, []);
+        if (data?.textColor !== undefined)
+          setTextColor(String(data.textColor || ""));
+        if (data?.backgroundColor !== undefined)
+          setBackgroundColorOverride(String(data.backgroundColor || ""));
+        if (data?.animationDuration !== undefined)
+          setAnimationDuration(Number(data.animationDuration || 22));
+        if (data?.heightPx !== undefined)
+          setHeightPx(Number(data.heightPx || 60));
+        if (data?.translateWilayaAr !== undefined)
+          setTranslateWilayaAr(Boolean(data.translateWilayaAr));
+      };
+      window.addEventListener("storage", onStorage);
+      window.addEventListener("moving-header-updated", onCustom);
+      return () => {
+        window.removeEventListener("storage", onStorage);
+        window.removeEventListener("moving-header-updated", onCustom);
+      };
+    }, []);
 
   const productLabel = (product) => {
     const map = {

@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Trash2, ArrowLeft } from "lucide-react";
 import { useTranslation } from "../context/translationContext";
 import { useCategoryOptions } from "../hooks/useCategoryOptions";
-import { normalizeImageUrl } from "../utils/images";
+import { useListings } from "../context/ListingsContext";
+import { useAuth } from "../context/AuthContext";
 
 const STORAGE_KEY = "saved_listings_v1";
 
@@ -23,24 +24,27 @@ export default function SavedListings() {
   const { options: categories, accentFor } = useCategoryOptions({
     includeHidden: true,
   });
+  const { listings, getSaved } = useListings();
+  const { user } = useAuth();
 
-  const [saved, setSaved] = useState(loadSaved);
-
-  useEffect(() => {
-    setSaved(loadSaved());
-  }, []);
+  // Get saved listings from context (using savedBy array)
+  const currentUserId = user?.id || user?._id || user?.email;
+  const saved = useMemo(() => {
+    if (!currentUserId) return [];
+    return getSaved(currentUserId);
+  }, [currentUserId, getSaved, listings]);
 
   const accent = useMemo(
     () => categories?.[0]?.accent || "var(--category-accent)",
     [categories]
   );
 
+  const { toggleSaved } = useListings();
+  
   const removeSaved = (id) => {
-    const next = saved.filter(
-      (item) => String(item.id || item._id) !== String(id)
-    );
-    setSaved(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    if (currentUserId) {
+      toggleSaved(id, currentUserId);
+    }
   };
 
   return (
@@ -75,9 +79,8 @@ export default function SavedListings() {
         ) : (
           <div className="listing-grid">
             {saved.map((item) => {
-              const image =
-                normalizeImageUrl(item.image) ||
-                normalizeImageUrl(item.images?.[0]);
+              // Use new model: image is a base64 string
+              const image = item.image || ""; // base64 string
               const catAccent = accentFor(item.category) || accent;
               return (
                 <div

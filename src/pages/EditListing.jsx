@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { getListingDetails, updateListing } from "../api/dataService";
+import { useListings } from "../context/ListingsContext";
+import { useAuth } from "../context/AuthContext";
+import { fileToBase64 } from "../utils/listingsStorage";
 import { useTheme } from "../context/themeContext";
 import { useTranslation } from "../context/translationContext";
 import { useToast } from "../context/ToastContext";
@@ -19,6 +21,8 @@ export default function EditListingPage() {
   const toast = useToast();
 
   const { options: categories } = useCategoryOptions({ includeHidden: true });
+  const { getListing, updateListing } = useListings();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -61,14 +65,14 @@ export default function EditListingPage() {
     (async () => {
       try {
         setLoading(true);
-        const res = await getListingDetails(id);
-        const l = res?.data?.listing;
+        // Use ListingsContext to get listing
+        const l = getListing(id);
         if (!active) return;
-        if (!res?.success || !l) return;
+        if (!l) return;
 
-        const first =
-          Array.isArray(l.images) && l.images.length ? l.images[0] : "";
-        setExistingImage(first ? normalizeImageUrl(first) : "");
+        // Use new model: image is a base64 string
+        const listingImage = l.image || "";
+        setExistingImage(listingImage);
 
         setForm({
           title: l.title || "",
@@ -155,25 +159,43 @@ export default function EditListingPage() {
         throw new Error(t("titleRequired") || "Le titre est requis");
       }
 
-      const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => {
-        // Don't send empty or undefined values
-        if (v !== "" && v !== null && v !== undefined) {
-          fd.append(k, v);
-        }
-      });
-
+      // Convert uploaded image to base64 if provided
+      let imageBase64 = existingImage; // Preserve existing image by default
       if (file) {
-        fd.append("photo", file);
+        try {
+          imageBase64 = await fileToBase64(file);
+        } catch (error) {
+          console.error("Failed to convert image to base64:", error);
+          throw new Error(t("imageUploadFailed") || "Échec du téléchargement de l'image");
+        }
       }
 
-      const json = await updateListing(id, fd);
+      // Update listing with normalized model
+      const updates = {
+        title: form.title,
+        description: form.description || form.details || "",
+        price: Number(form.pricePerKg || 0),
+        category: form.category || "Poulet",
+        image: imageBase64, // base64 string
+        status: form.status || "published",
+        wilaya: form.wilaya || "",
+        listingDate: form.listingDate || "",
+        breedingDate: form.breedingDate || "",
+        preparationDate: form.preparationDate || "",
+        trainingType: form.trainingType || "",
+        medicationsUsed: form.medicationsUsed || "",
+        vaccinated: form.vaccinated || false,
+        quantity: Number(form.quantity || 0),
+        delivery: form.delivery || false,
+        averageWeight: Number(form.averageWeight || 0),
+      };
 
-      if (json?.success) {
+      const updated = updateListing(id, updates);
+
+      if (updated) {
         toast.success(
           t("listingUpdated") || "Annonce mise à jour avec succès!"
         );
-        // Navigate after a short delay to show success message
         setTimeout(() => {
           navigate(`/listing/${id}`);
         }, 1000);
@@ -181,7 +203,7 @@ export default function EditListingPage() {
       }
 
       throw new Error(
-        json?.message || t("updateFailed") || "Échec de la mise à jour"
+        t("updateFailed") || "Échec de la mise à jour"
       );
     } catch (err) {
       console.error("Update listing error:", err);

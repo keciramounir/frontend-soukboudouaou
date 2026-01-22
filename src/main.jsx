@@ -6,6 +6,7 @@ import { AuthProvider } from "./context/AuthContext.jsx";
 import { ThemeProvider } from "./context/themeContext.jsx";
 import { TranslationProvider } from "./context/translationContext.jsx";
 import { CategoryProvider } from "./context/categoryContext.jsx";
+import { ListingsProvider } from "./context/ListingsContext.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { ToastProvider } from "./context/ToastContext.jsx";
 
@@ -28,9 +29,11 @@ createRoot(rootEl).render(
         <TranslationProvider>
           <ToastProvider>
             <CategoryProvider>
-              <ErrorBoundary>
-                <App />
-              </ErrorBoundary>
+              <ListingsProvider>
+                <ErrorBoundary>
+                  <App />
+                </ErrorBoundary>
+              </ListingsProvider>
             </CategoryProvider>
           </ToastProvider>
         </TranslationProvider>

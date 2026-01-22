@@ -59,7 +59,29 @@ export default function AdminShell({ children }) {
 
   // Redirect non-admin users away from admin panel
   useEffect(() => {
-    if (!user || (!isAdmin && !isSuperAdmin)) {
+    if (!user) {
+      navigate("/auth");
+      return;
+    }
+    
+    // In mock mode, auto-enable admin for default user
+    const isMockEnabled = localStorage.getItem("use_mock") === "1" || 
+                          import.meta.env.VITE_USE_MOCK === "1" ||
+                          (import.meta.env.DEV && localStorage.getItem("use_mock") !== "0");
+    
+    if (isMockEnabled && user?.email === "imad@soukboudouaou.com" && user?.role !== "super_admin") {
+      try {
+        localStorage.setItem("mock_admin_mode", "1");
+        const updatedUser = { ...user, role: "super_admin" };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        window.location.reload();
+        return;
+      } catch (error) {
+        console.error("Failed to enable admin mode:", error);
+      }
+    }
+    
+    if (!isAdmin && !isSuperAdmin) {
       navigate("/");
     }
   }, [user, isAdmin, isSuperAdmin, navigate]);
