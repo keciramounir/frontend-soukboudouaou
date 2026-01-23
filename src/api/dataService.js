@@ -13,6 +13,7 @@ import turkeyImg from "../assets/turkey.png";
 import slideImg1 from "../assets/pexels-james-collington-2147687246-29771450.jpg";
 import slideImg2 from "../assets/pexels-james-collington-2147687246-29771458.jpg";
 import slideImg3 from "../assets/pexels-photocorp-20867250.jpg";
+import { generateMovingHeaderItems } from "../utils/algerianWilayas.js";
 import { safeGetItem, safeSetItem } from "../utils/localStorage";
 
 // Get API origin from environment variable (without /api suffix)
@@ -238,6 +239,11 @@ function loadMockListings() {
       
       return listing;
     });
+    
+    // Save the normalized listings to localStorage so they're available immediately
+    if (cloned?.data?.listings && cloned.data.listings.length > 0) {
+      saveMockListings(cloned.data.listings);
+    }
   }
   return cloned;
 }
@@ -958,12 +964,12 @@ export async function adminDeleteUser(id) {
    ========================= */
 
 export const DEFAULT_MOVING_HEADER_FONT_CONFIG = {
-  fontFamily: "Inter",
-  fontSize: 15,
-  fontWeight: "600",
+  fontFamily: "Inter, system-ui, -apple-system, sans-serif",
+  fontSize: 16,
+  fontWeight: "700",
   fontStyle: "normal",
-  letterSpacing: 0.28,
-  wordSpacing: 0.35,
+  letterSpacing: 0.3,
+  wordSpacing: 0.4,
 };
 
 export async function getMovingHeaderSettings() {
@@ -1000,7 +1006,6 @@ function loadLocalMovingHeader() {
   if (stored) return stored;
   
   // Initialize with mock data for all 69 Algerian wilayas at 250/kg
-  const { generateMovingHeaderItems } = require("../utils/algerianWilayas");
   const mockItems = generateMovingHeaderItems(250, "Poulet", "kg");
   
   const defaultData = {
@@ -1010,9 +1015,9 @@ function loadLocalMovingHeader() {
       fontConfig: DEFAULT_MOVING_HEADER_FONT_CONFIG,
       prefixFr: "",
       prefixAr: "",
-      textColor: "",
-      backgroundColor: "",
-      animationDuration: 25,
+      textColor: "#ffffff", // White text by default
+      backgroundColor: "#2563eb", // Blue background (#2563eb is a nice blue)
+      animationDuration: 80, // Very slow animation by default (higher = slower)
       heightPx: 60,
       translateWilayaAr: true,
     },
@@ -1057,7 +1062,7 @@ export async function updateMovingHeaderSettings(payload) {
   const prefixAr = payload?.prefixAr || payload?.data?.prefixAr || "";
   const textColor = payload?.textColor || payload?.data?.textColor || "";
   const backgroundColor = payload?.backgroundColor || payload?.data?.backgroundColor || "";
-  const animationDuration = payload?.animationDuration !== undefined ? payload.animationDuration : (payload?.data?.animationDuration !== undefined ? payload.data.animationDuration : 25);
+  const animationDuration = payload?.animationDuration !== undefined ? payload.animationDuration : (payload?.data?.animationDuration !== undefined ? payload.data.animationDuration : 80);
   const heightPx = payload?.heightPx !== undefined ? payload.heightPx : (payload?.data?.heightPx !== undefined ? payload.data.heightPx : 60);
   const translateWilayaAr = payload?.translateWilayaAr !== undefined ? payload.translateWilayaAr : (payload?.data?.translateWilayaAr !== undefined ? payload.data.translateWilayaAr : true);
   
@@ -1118,7 +1123,7 @@ function loadLocalHeroSlides() {
     // ignore
   }
   
-  // Initialize with default chicken farm images if no slides exist
+  // Initialize with default chicken and turkey farm images if no slides exist
   const defaultSlides = [
     {
       id: "hero-1",
@@ -1135,6 +1140,18 @@ function loadLocalHeroSlides() {
     {
       id: "hero-3",
       url: slideImg3,
+      durationSeconds: 5,
+      durationMs: 5000,
+    },
+    {
+      id: "hero-4",
+      url: chickenImg, // Chicken image
+      durationSeconds: 5,
+      durationMs: 5000,
+    },
+    {
+      id: "hero-5",
+      url: turkeyImg, // Turkey image
       durationSeconds: 5,
       durationMs: 5000,
     },

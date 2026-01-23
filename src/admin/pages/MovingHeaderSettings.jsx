@@ -134,7 +134,7 @@ export default function MovingHeaderSettings() {
   const [prefixAr, setPrefixAr] = useState("");
   const [textColor, setTextColor] = useState("");
   const [backgroundColor, setBackgroundColor] = useState("");
-  const [animationDuration, setAnimationDuration] = useState(25);
+  const [animationDuration, setAnimationDuration] = useState(80);
   const [heightPx, setHeightPx] = useState(60);
   const [translateWilayaAr, setTranslateWilayaAr] = useState(true);
   const [fontConfig, setFontConfig] = useState(() => ({
@@ -158,7 +158,7 @@ export default function MovingHeaderSettings() {
           setPrefixAr(String(json.data?.prefixAr || ""));
           setTextColor(String(json.data?.textColor || ""));
           setBackgroundColor(String(json.data?.backgroundColor || ""));
-          setAnimationDuration(Number(json.data?.animationDuration || 25));
+          setAnimationDuration(Number(json.data?.animationDuration || 80));
           setHeightPx(Number(json.data?.heightPx || 60));
           setTranslateWilayaAr(Boolean(json.data?.translateWilayaAr ?? true));
         }
@@ -317,7 +317,7 @@ export default function MovingHeaderSettings() {
                         prefixAr: nextPrefixAr,
                         textColor: nextTextColor,
                         backgroundColor: json.data?.backgroundColor || backgroundColor || "",
-                        animationDuration: json.data?.animationDuration || animationDuration || 25,
+                        animationDuration: json.data?.animationDuration || animationDuration || 80,
                         heightPx: nextHeightPx,
                         translateWilayaAr: nextTranslateWilayaAr,
                       },

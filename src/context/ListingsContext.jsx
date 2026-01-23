@@ -34,6 +34,22 @@ export function ListingsProvider({ children }) {
   // Load listings from localStorage
   const loadListings = useCallback(() => {
     try {
+      // Try to load from dataService format first (mock_listings with data.listings)
+      const mockData = localStorage.getItem("mock_listings");
+      if (mockData) {
+        try {
+          const parsed = JSON.parse(mockData);
+          if (parsed?.data?.listings && Array.isArray(parsed.data.listings)) {
+            setListings(parsed.data.listings);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          // Continue to fallback
+        }
+      }
+      
+      // Fallback to listingsStorage format
       const loaded = getAllListings();
       setListings(loaded);
       setLoading(false);

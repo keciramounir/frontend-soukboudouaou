@@ -1039,8 +1039,14 @@ export default function Home() {
               <div className="listing-grid">
                 {visibleListings.map((l, index) => {
                   const itemAccent = accentFor(l.category);
-                  // Use new model: image is a base64 string
-                  const listingImage = l.image || ""; // base64 string
+                  // Handle both 'image' (single) and 'images' (array) fields
+                  let listingImage = "";
+                  if (l.image) {
+                    listingImage = l.image;
+                  } else if (l.images && Array.isArray(l.images) && l.images.length > 0) {
+                    listingImage = l.images[0]; // Use first image from array
+                  }
+                  
                   const firstImg = listingImage || getFallbackImage(l.category, index, "listing");
                   // Use asset fallback if no image, then SVG placeholder as last resort
                   const hasImage = listingImage && listingImage.trim() !== "";

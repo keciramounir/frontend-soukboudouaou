@@ -38,6 +38,10 @@ export default defineConfig(({ mode }) => {
             vendor: ["react", "react-dom", "react-router-dom"],
             ui: ["lucide-react", "akar-icons"],
           },
+          // Ensure proper file extensions
+          entryFileNames: "assets/[name]-[hash].js",
+          chunkFileNames: "assets/[name]-[hash].js",
+          assetFileNames: "assets/[name]-[hash].[ext]",
         },
       },
     },
@@ -55,7 +59,8 @@ export default defineConfig(({ mode }) => {
         "127.0.0.1"
       ],
       hmr: {
-        clientPort: 443,
+        // Only set clientPort for HTTPS/production, remove for local dev
+        // clientPort: 443,
       },
       proxy: {
         "/api": {

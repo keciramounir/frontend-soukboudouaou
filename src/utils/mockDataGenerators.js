@@ -133,16 +133,10 @@ export function generateUsers(count = 10, options = {}) {
 export function generateListings(count = 20, userIds = []) {
   const listings = [];
   
-  // Import fallback images
-  let chickenImg, turkeyImg;
-  try {
-    chickenImg = require('../assets/chicken.png');
-    turkeyImg = require('../assets/turkey.png');
-  } catch {
-    // Fallback if images not available
-    chickenImg = 'chicken.png';
-    turkeyImg = 'turkey.png';
-  }
+  // Use string paths for images - will be resolved by the calling code
+  // The actual image imports are handled in dataService.js
+  const chickenImg = '/src/assets/chicken.png';
+  const turkeyImg = '/src/assets/turkey.png';
   
   for (let i = 0; i < count; i++) {
     const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];

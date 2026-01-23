@@ -46,6 +46,32 @@ export function getAllListings() {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
+      
+      // Handle dataService format: { success: true, data: { listings: [...] } }
+      if (parsed?.data?.listings && Array.isArray(parsed.data.listings)) {
+        return parsed.data.listings.map(listing => {
+          // Normalize image field - handle both 'image' and 'images' fields
+          // Keep both for compatibility
+          if (listing.images && Array.isArray(listing.images) && listing.images.length > 0 && !listing.image) {
+            listing.image = listing.images[0]; // Use first image for compatibility
+          }
+          // Also ensure images array exists if only image field is present
+          if (listing.image && (!listing.images || !Array.isArray(listing.images) || listing.images.length === 0)) {
+            listing.images = [listing.image];
+          }
+          
+          // Clean up any blob URLs (they're not persistent)
+          if (listing.image && typeof listing.image === 'string' && listing.image.startsWith('blob:')) {
+            listing.image = ''; // Remove blob URLs
+            if (listing.images) {
+              listing.images = listing.images.filter(img => !img || !img.startsWith('blob:'));
+            }
+          }
+          return listing;
+        });
+      }
+      
+      // Handle old format: direct array
       const listings = Array.isArray(parsed) ? parsed : [];
       
       // Clean up any blob URLs (they're not persistent)

@@ -29,11 +29,12 @@ export default function MovingHeader({ sidebarOpen }) {
     ...DEFAULT_MOVING_HEADER_FONT_CONFIG,
   }));
   const [backgroundColorOverride, setBackgroundColorOverride] = useState("");
-  const [animationDuration, setAnimationDuration] = useState(22);
+  const [animationDuration, setAnimationDuration] = useState(80); // Very slow default (higher = slower)
 
+  // Default to blue if no override is set
   const backgroundColor =
     backgroundColorOverride ||
-    (darkMode ? "var(--category-accent-soft)" : "var(--category-accent)");
+    "#2563eb"; // Nice blue color (#2563eb)
 
   useEffect(() => {
     let active = true;
@@ -56,7 +57,7 @@ export default function MovingHeader({ sidebarOpen }) {
           if (data?.backgroundColor !== undefined)
             setBackgroundColorOverride(String(data.backgroundColor || ""));
           if (data?.animationDuration !== undefined)
-            setAnimationDuration(Number(data.animationDuration || 22));
+            setAnimationDuration(Number(data.animationDuration || 80));
           if (data?.heightPx !== undefined)
             setHeightPx(Number(data.heightPx || 60));
           if (data?.translateWilayaAr !== undefined)
@@ -76,7 +77,7 @@ export default function MovingHeader({ sidebarOpen }) {
         const nextPrefixAr = String(json.data?.prefixAr || "");
         const nextTextColor = String(json.data?.textColor || "");
         const nextBgColor = String(json.data?.backgroundColor || "");
-        const nextAnimDuration = Number(json.data?.animationDuration || 22);
+        const nextAnimDuration = Number(json.data?.animationDuration || 80);
         const nextHeightPx = Number(json.data?.heightPx || 60);
         const nextTranslateWilayaAr = Boolean(
           json.data?.translateWilayaAr ?? true
@@ -136,7 +137,7 @@ export default function MovingHeader({ sidebarOpen }) {
         if (data?.backgroundColor !== undefined)
           setBackgroundColorOverride(String(data.backgroundColor || ""));
         if (data?.animationDuration !== undefined)
-          setAnimationDuration(Number(data.animationDuration || 22));
+          setAnimationDuration(Number(data.animationDuration || 80));
         if (data?.heightPx !== undefined)
           setHeightPx(Number(data.heightPx || 60));
         if (data?.translateWilayaAr !== undefined)
@@ -159,8 +160,8 @@ export default function MovingHeader({ sidebarOpen }) {
         setTextColor(String(data.textColor || ""));
       if (data?.backgroundColor !== undefined)
         setBackgroundColorOverride(String(data.backgroundColor || ""));
-      if (data?.animationDuration !== undefined)
-        setAnimationDuration(Number(data.animationDuration || 22));
+        if (data?.animationDuration !== undefined)
+          setAnimationDuration(Number(data.animationDuration || 80));
       if (data?.heightPx !== undefined)
         setHeightPx(Number(data.heightPx || 60));
       if (data?.translateWilayaAr !== undefined)
@@ -335,7 +336,8 @@ export default function MovingHeader({ sidebarOpen }) {
   const prefixLabel =
     (language === "ar" ? prefixAr : prefixFr) || t("pricesScrolling") || "";
   const displayPrefix = prefixLabel ? `${prefixLabel}: ` : "";
-  const finalTextColor = textColor || (darkMode ? "#ffffff" : "#0f172a");
+  // Default to white text if no color is set
+  const finalTextColor = textColor || "#ffffff";
 
   return (
     <div
