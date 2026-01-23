@@ -9,6 +9,10 @@ import myListingsMockFile from "../mocks/myListings.json";
 // Import asset images for mock listings
 import chickenImg from "../assets/chicken.png";
 import turkeyImg from "../assets/turkey.png";
+// Import hero slide images
+import slideImg1 from "../assets/pexels-james-collington-2147687246-29771450.jpg";
+import slideImg2 from "../assets/pexels-james-collington-2147687246-29771458.jpg";
+import slideImg3 from "../assets/pexels-photocorp-20867250.jpg";
 import { safeGetItem, safeSetItem } from "../utils/localStorage";
 
 // Get API origin from environment variable (without /api suffix)
@@ -463,9 +467,23 @@ export async function createListing(fd) {
       averageWeight: Number(entries.averageWeight || 0) || 0,
     };
     
-    // Save to persistent storage
+    // Save to persistent storage - NEWEST FIRST (listing at the beginning)
     const next = [listing, ...listings];
     saveMockListings(next);
+    
+    // Trigger storage event to refresh context
+    try {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'mock_listings',
+        newValue: JSON.stringify({ success: true, data: { listings: next } }),
+        storageArea: localStorage
+      }));
+      window.dispatchEvent(new CustomEvent('listings-updated', {
+        detail: { listings: next }
+      }));
+    } catch (e) {
+      // ignore event errors
+    }
     
     // Also update my listings index (for quick lookup)
     const myBase = loadMockMyListings();
@@ -980,13 +998,30 @@ const MOVING_HEADER_KEY = "site_moving_header_v1";
 function loadLocalMovingHeader() {
   const stored = safeGetItem(MOVING_HEADER_KEY);
   if (stored) return stored;
-  return {
+  
+  // Initialize with mock data for all 69 Algerian wilayas at 250/kg
+  const { generateMovingHeaderItems } = require("../utils/algerianWilayas");
+  const mockItems = generateMovingHeaderItems(250, "Poulet", "kg");
+  
+  const defaultData = {
     success: true,
     data: {
-      items: [],
+      items: mockItems,
       fontConfig: DEFAULT_MOVING_HEADER_FONT_CONFIG,
+      prefixFr: "",
+      prefixAr: "",
+      textColor: "",
+      backgroundColor: "",
+      animationDuration: 25,
+      heightPx: 60,
+      translateWilayaAr: true,
     },
   };
+  
+  // Save default data
+  safeSetItem(MOVING_HEADER_KEY, defaultData);
+  
+  return defaultData;
 }
 
 function saveLocalMovingHeader(payload) {
@@ -1069,20 +1104,57 @@ function loadLocalHeroSlides() {
     if (raw) {
       const parsed = JSON.parse(raw);
       // Clean up any blob URLs in slides
-      if (parsed?.data?.slides) {
+      if (parsed?.data?.slides && parsed.data.slides.length > 0) {
         parsed.data.slides = parsed.data.slides.map(slide => {
           if (slide.url && typeof slide.url === 'string' && slide.url.startsWith('blob:')) {
             return { ...slide, url: '' }; // Remove blob URLs
           }
           return slide;
         });
+        return parsed;
       }
-      return parsed;
     }
   } catch {
     // ignore
   }
-  return { data: { slides: [] } };
+  
+  // Initialize with default chicken farm images if no slides exist
+  const defaultSlides = [
+    {
+      id: "hero-1",
+      url: slideImg1,
+      durationSeconds: 5,
+      durationMs: 5000,
+    },
+    {
+      id: "hero-2",
+      url: slideImg2,
+      durationSeconds: 5,
+      durationMs: 5000,
+    },
+    {
+      id: "hero-3",
+      url: slideImg3,
+      durationSeconds: 5,
+      durationMs: 5000,
+    },
+  ];
+  
+  const defaultData = {
+    success: true,
+    data: {
+      slides: defaultSlides,
+    },
+  };
+  
+  // Save default slides
+  try {
+    localStorage.setItem(HERO_KEY, JSON.stringify(defaultData));
+  } catch {
+    // ignore
+  }
+  
+  return defaultData;
 }
 
 function saveLocalHeroSlides(payload) {

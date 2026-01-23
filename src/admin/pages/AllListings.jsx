@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useTranslation } from "../../context/translationContext";
 import { useListings } from "../../context/ListingsContext";
 import { useToast } from "../../context/ToastContext";
+import { isSuperAdmin, hasPermission, PERMISSIONS } from "../../utils/permissions";
 
 export default function AllListings() {
   const { user } = useAuth();
@@ -10,11 +11,12 @@ export default function AllListings() {
   const toast = useToast();
   const { listings, loading: listingsLoading, searchListings, deleteListing, updateListing } = useListings();
   const role = user?.role || "user";
-  const isSuperAdmin = role === "super_admin";
+  const isSuper = isSuperAdmin(role);
+  const canDelete = hasPermission(role, PERMISSIONS.DELETE_ANY_LISTING);
 
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
-  const allowDelete = isSuperAdmin;
+  const allowDelete = canDelete;
   
   // Filter listings
   const filteredListings = useMemo(() => {
@@ -48,7 +50,7 @@ export default function AllListings() {
     }));
   }, [rows]);
 
-  if (!isSuperAdmin) {
+  if (!isSuper) {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-8 text-center">
@@ -222,11 +224,8 @@ export default function AllListings() {
                                 return;
                               }
                               toast.success(t("listingDeleted") || t("deleted") || "Annonce supprimée");
-                              setRows((prev) =>
-                                (prev || []).filter(
-                                  (x) => (x.id || x._id) !== r.id
-                                )
-                              );
+                              // Listings will refresh automatically via context
+                              window.location.reload();
                             } catch (e) {
                               toast.error(e?.message || t("deleteFailed") || "Suppression impossible");
                             }

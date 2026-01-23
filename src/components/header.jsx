@@ -195,7 +195,7 @@ export default function Header() {
                   }
                 >
                   <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[var(--category-accent)] flex items-center justify-center text-white text-xs font-bold uppercase">
-                    {currentUser ? displayName.charAt(0) : "?"}
+                    {currentUser ? displayName.charAt(0) : "👤"}
                   </div>
                   {currentUser && (
                     <>

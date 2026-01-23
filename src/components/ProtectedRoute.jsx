@@ -1,9 +1,10 @@
 // src/components/ProtectedRoute.jsx
-import React, { useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { canAccessAdminPanel, isSuperAdmin, hasPermission, ROLES } from "../utils/permissions";
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, requiredRole, requiredPermission }) => {
   const { token, user } = useAuth();
   const location = useLocation();
   
@@ -15,7 +16,7 @@ const ProtectedRoute = ({ children }) => {
     } catch {
       return null;
     }
-  }, [user]);
+  }, []);
   
   const storedToken = localStorage.getItem("token");
   const currentUser = user || storedUser;
@@ -27,7 +28,10 @@ const ProtectedRoute = ({ children }) => {
   // For admin routes, check if user has admin role
   const isAdminRoute = location.pathname.startsWith("/admin");
   const userRole = currentUser?.role || null;
-  const isAdmin = userRole === "ADMIN" || userRole === "super_admin";
+  
+  // Normalize role (handle case variations)
+  const normalizedRole = userRole ? String(userRole).toLowerCase() : null;
+  const isSuper = isSuperAdmin(normalizedRole);
 
   // In mock mode, allow access if user exists (even without token)
   // Mock is enabled by default in dev mode unless explicitly disabled
@@ -43,14 +47,29 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/auth" replace state={{ from: location }} />;
   }
 
-  // For admin routes, ensure user is admin
-  if (isAdminRoute && !isAdmin) {
+  // Check required role
+  if (requiredRole) {
+    const requiredRoleLower = String(requiredRole).toLowerCase();
+    if (normalizedRole !== requiredRoleLower) {
+      return <Navigate to="/" replace />;
+    }
+  }
+
+  // Check required permission (if permission system is used)
+  if (requiredPermission && normalizedRole) {
+    if (!hasPermission(normalizedRole, requiredPermission)) {
+      return <Navigate to="/" replace />;
+    }
+  }
+
+  // For admin routes, ensure user can access admin panel
+  if (isAdminRoute && !canAccessAdminPanel(normalizedRole)) {
     // In mock mode, if it's the default user, automatically enable admin mode
     if (isMockEnabled && currentUser?.email === "imad@soukboudouaou.com") {
       try {
         localStorage.setItem("mock_admin_mode", "1");
         // Update user role in context and localStorage
-        const updatedUser = { ...currentUser, role: "super_admin" };
+        const updatedUser = { ...currentUser, role: ROLES.SUPER_ADMIN };
         try {
           localStorage.setItem("user", JSON.stringify(updatedUser));
         } catch (error) {
@@ -64,6 +83,21 @@ const ProtectedRoute = ({ children }) => {
       }
     }
     return <Navigate to="/" replace />;
+  }
+
+  // For super admin only routes, check specifically
+  const isSuperAdminRoute = location.pathname.includes("/admin/listings") ||
+                            location.pathname.includes("/admin/users") ||
+                            location.pathname.includes("/admin/activity") ||
+                            location.pathname.includes("/admin/moving-header") ||
+                            location.pathname.includes("/admin/categories") ||
+                            location.pathname.includes("/admin/filtration") ||
+                            location.pathname.includes("/admin/demo") ||
+                            location.pathname.includes("/admin/hero-slides") ||
+                            location.pathname.includes("/admin/call-centers");
+  
+  if (isSuperAdminRoute && !isSuper) {
+    return <Navigate to="/admin" replace />;
   }
 
   return children;

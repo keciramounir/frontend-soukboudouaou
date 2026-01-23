@@ -20,7 +20,6 @@ import CallCenters from "./CallCenters";
 export default function AdminApp() {
   const { user } = useAuth();
   const role = user?.role || "user";
-  const isAdmin = role === "ADMIN" || role === "super_admin";
   const isSuperAdmin = role === "super_admin";
 
   return (
