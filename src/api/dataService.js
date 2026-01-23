@@ -21,21 +21,17 @@ import { safeGetItem, safeSetItem } from "../utils/localStorage";
 export const API_ORIGIN = (import.meta.env.VITE_API_URL || "")
   .replace(/\/api$/, "")
   .replace(/\/+$/, "");
-// Enable mock mode by default for demo
-// Check localStorage first, then env vars, then default to enabled in dev
+// FORCE MOCK MODE - Always enabled, no API calls
+// This app is fully frontend-only with no backend
 const getMockSetting = (key, envKey) => {
-  const stored = localStorage.getItem(key);
-  if (stored === "1") return true;
-  if (stored === "0") return false;
-  if (import.meta.env[envKey] === "1") return true;
-  if (import.meta.env[envKey] === "0") return false;
-  // Default to enabled in dev mode for demo
-  return import.meta.env.DEV;
+  // Always return true - force mock mode
+  return true;
 };
 
-const ENV_MOCK = getMockSetting("use_mock", "VITE_USE_MOCK");
-const ENV_MOCK_LISTINGS = getMockSetting("use_mock_listings", "VITE_USE_MOCK_LISTINGS");
-const ENV_MOCK_USERS = getMockSetting("use_mock_users", "VITE_USE_MOCK_USERS");
+// Force all mock modes to be enabled
+const ENV_MOCK = true; // Always enabled
+const ENV_MOCK_LISTINGS = true; // Always enabled
+const ENV_MOCK_USERS = true; // Always enabled
 const THROW_ON_API_PREFIX = import.meta.env.DEV;
 
 function apiPath(path) {
@@ -43,14 +39,8 @@ function apiPath(path) {
 }
 
 export function isMockEnabled() {
-  try {
-    const stored = localStorage.getItem("use_mock");
-    if (stored === "1") return true;
-    if (stored === "0") return false;
-  } catch {
-    // ignore
-  }
-  return ENV_MOCK;
+  // Always return true - force mock mode, no API calls
+  return true;
 }
 
 export function setMockEnabled(enabled) {
@@ -62,14 +52,8 @@ export function setMockEnabled(enabled) {
 }
 
 export function isMockListingsEnabled() {
-  try {
-    const stored = localStorage.getItem("use_mock_listings");
-    if (stored === "1") return true;
-    if (stored === "0") return false;
-  } catch {
-    // ignore
-  }
-  return ENV_MOCK_LISTINGS || isMockEnabled();
+  // Always return true - force mock mode
+  return true;
 }
 
 export function setMockListingsEnabled(enabled) {
@@ -81,14 +65,8 @@ export function setMockListingsEnabled(enabled) {
 }
 
 export function isMockUsersEnabled() {
-  try {
-    const stored = localStorage.getItem("use_mock_users");
-    if (stored === "1") return true;
-    if (stored === "0") return false;
-  } catch {
-    // ignore
-  }
-  return ENV_MOCK_USERS || isMockEnabled();
+  // Always return true - force mock mode
+  return true;
 }
 
 export function setMockUsersEnabled(enabled) {
@@ -308,88 +286,46 @@ function saveMockMyListings(listings) {
    ========================= */
 
 export async function getListings(params) {
-  if (isMockListingsEnabled()) {
-    const base = loadMockListings();
-    const listings = base?.data?.listings || [];
-    const page = Math.max(1, Number(params?.page || 1));
-    const limit = Math.max(1, Number(params?.limit || 20));
-    const start = (page - 1) * limit;
-    const slice = listings.slice(start, start + limit);
-    return {
-      success: true,
-      data: {
-        listings: slice,
-        pagination: {
-          page,
-          limit,
-          total: listings.length,
-          totalPages: Math.max(1, Math.ceil(listings.length / limit)),
-          hasNext: start + limit < listings.length,
-          hasPrev: page > 1,
-        },
+  // Always use mock - no API calls
+  const base = loadMockListings();
+  const listings = base?.data?.listings || [];
+  const page = Math.max(1, Number(params?.page || 1));
+  const limit = Math.max(1, Number(params?.limit || 20));
+  const start = (page - 1) * limit;
+  const slice = listings.slice(start, start + limit);
+  return {
+    success: true,
+    data: {
+      listings: slice,
+      pagination: {
+        page,
+        limit,
+        total: listings.length,
+        totalPages: Math.max(1, Math.ceil(listings.length / limit)),
+        hasNext: start + limit < listings.length,
+        hasPrev: page > 1,
       },
-    };
-  }
-  try {
-    const res = await api.get(apiPath("/listings"), { params });
-    return res.data;
-  } catch (e) {
-    // Return empty array structure instead of error to prevent app crash
-    return {
-      success: true,
-      data: {
-        listings: [],
-        total: 0,
-        page: params?.page || 1,
-        limit: params?.limit || 20,
-      },
-    };
-  }
+    },
+  };
 }
 
 export async function getListingDetails(id) {
-  if (isMockListingsEnabled()) {
-    const base = loadMockListings();
-    const listings = base?.data?.listings || [];
-    const target = listings.find(
-      (l) => String(l.id || l._id || l.slug) === String(id || "")
-    );
-    if (!target) return { success: false, message: "Not found" };
-    return { success: true, data: { listing: target } };
-  }
-  try {
-    const res = await api.get(apiPath(`/public/listings/${id}`));
-    return res.data;
-  } catch (e) {
-    console.error("getListingDetails error:", e);
-    return {
-      success: false,
-      message:
-        e?.response?.data?.message || e?.message || "Failed to fetch listing",
-    };
-  }
+  // Always use mock - no API calls
+  const base = loadMockListings();
+  const listings = base?.data?.listings || [];
+  const target = listings.find(
+    (l) => String(l.id || l._id || l.slug) === String(id || "")
+  );
+  if (!target) return { success: false, message: "Not found" };
+  return { success: true, data: { listing: target } };
 }
 
 export async function getMyListings() {
-  if (isMockListingsEnabled()) {
-    // Get full listings data with images, not just simplified my listings
-    const base = loadMockListings();
-    const allListings = base?.data?.listings || [];
-    // For mock mode, return all listings (in real app, would filter by userId)
-    // But preserve full listing data including images
-    return { success: true, data: allListings };
-  }
-  try {
-    const res = await api.get(apiPath("/user/my-listings"));
-    return res.data;
-  } catch (e) {
-    console.error("getMyListings error:", e);
-    return {
-      success: false,
-      message:
-        e?.response?.data?.message || e?.message || "Failed to fetch listings",
-    };
-  }
+  // Always use mock - no API calls
+  const base = loadMockListings();
+  const allListings = base?.data?.listings || [];
+  // Return all listings (in real app, would filter by userId)
+  return { success: true, data: allListings };
 }
 
 /**
@@ -498,8 +434,8 @@ export async function createListing(fd) {
     
     return { success: true, data: { listing } };
   }
-  const res = await api.post(apiPath("/listings"), fd);
-  return res.data;
+  // Never reach here - mock mode is always enabled
+  return { success: false, message: "Mock mode only - no API calls" };
 }
 
 /**
@@ -603,8 +539,8 @@ export async function updateListing(id, fd) {
     
     return { success: true, data: { listing: next } };
   }
-  const res = await api.put(apiPath(`/listings/${id}`), fd);
-  return res.data;
+  // Never reach here - mock mode is always enabled
+  return { success: false, message: "Mock mode only - no API calls" };
 }
 
 export async function deleteListing(id) {
@@ -620,8 +556,8 @@ export async function deleteListing(id) {
     saveMockMyListings(myNext);
     return { success: true };
   }
-  const res = await api.delete(apiPath(`/listings/${id}`));
-  return res.data;
+  // Never reach here - mock mode is always enabled
+  return { success: false, message: "Mock mode only - no API calls" };
 }
 
 export async function searchListings(q) {
@@ -638,8 +574,8 @@ export async function searchListings(q) {
       : listings;
     return { success: true, data: { listings: filtered } };
   }
-  const res = await api.get(apiPath("/listings/search"), { params: { q } });
-  return res.data;
+  // Never reach here - mock mode is always enabled
+  return { success: true, data: { listings: [] } };
 }
 
 export async function setListingStatus(id, status) {
@@ -663,8 +599,8 @@ export async function setListingStatus(id, status) {
     
     return { success: true, data: { listing: listings[idx] } };
   }
-  const res = await api.patch(apiPath(`/listings/${id}/status`), { status });
-  return res.data;
+  // Never reach here - mock mode is always enabled
+  return { success: false, message: "Mock mode only - no API calls" };
 }
 
 /* =========================
@@ -672,51 +608,20 @@ export async function setListingStatus(id, status) {
    ========================= */
 
 export async function getProfile() {
-  if (isMockEnabled()) {
-    const saved = localStorage.getItem("user");
-    if (saved) {
-      try {
-        return { success: true, user: JSON.parse(saved) };
-      } catch {
-        // ignore parse error
-      }
+  // Always use mock - no API calls
+  const saved = localStorage.getItem("user");
+  if (saved) {
+    try {
+      return { success: true, user: JSON.parse(saved) };
+    } catch {
+      // ignore parse error
     }
-    return { success: true, user: MOCK_USER };
   }
-  
-  try {
-    const res = await api.get(apiPath("/dashboard/user"));
-    return res.data;
-  } catch (e) {
-    console.error("getProfile error:", e);
-    const saved = localStorage.getItem("user");
-    if (saved) {
-      try {
-        return { success: true, user: JSON.parse(saved) };
-      } catch {
-        // ignore parse error
-      }
-    }
-    return { success: false };
-  }
+  return { success: true, user: MOCK_USER };
 }
 
 export async function updateProfile(body) {
-  if (!isMockEnabled()) {
-    try {
-      const res = await api.put(apiPath("/auth/update"), body);
-      return res.data;
-    } catch (e) {
-      console.error("updateProfile error:", e);
-      return {
-        success: false,
-        message:
-          e?.response?.data?.message ||
-          e?.message ||
-          "Update failed. Please try again.",
-      };
-    }
-  }
+  // Always use mock - no API calls
   MOCK_USER = { ...MOCK_USER, ...body };
   return { success: true, user: MOCK_USER };
 }
@@ -726,13 +631,7 @@ export async function updateProfile(body) {
    ========================= */
 
 export async function createInquiry(slugOrId, body) {
-  if (!isMockEnabled()) {
-    const res = await api.post(
-      apiPath(`/public/listings/${slugOrId}/inquiries`),
-      body
-    );
-    return res.data;
-  }
+  // Always use mock - no API calls
   const all = safeGetItem("mock_inquiries", []);
   const inquiry = {
     id: `iq${Date.now()}`,
@@ -759,10 +658,7 @@ export async function createInquiry(slugOrId, body) {
 }
 
 export async function adminGetInquiries(params) {
-  if (!isMockEnabled()) {
-    const res = await api.get(apiPath("/admin/inquiries"), { params });
-    return res.data;
-  }
+  // Always use mock - no API calls
   const all = safeGetItem("mock_inquiries", []);
   return {
     success: true,
@@ -780,26 +676,12 @@ export async function adminGetInquiries(params) {
    ========================= */
 
 export async function getOrders() {
-  if (!isMockEnabled()) {
-    try {
-      const res = await api.get(apiPath("/orders"));
-      return res.data;
-    } catch (e) {
-      console.error("getOrders error:", e);
-    }
-  }
+  // Always use mock - no API calls
   return ordersMockFile;
 }
 
 export async function getUserOrders() {
-  if (!isMockEnabled()) {
-    try {
-      const res = await api.get(apiPath("/user/orders"));
-      return res.data;
-    } catch (e) {
-      console.error("getUserOrders error:", e);
-    }
-  }
+  // Always use mock - no API calls
   return ordersMockFile;
 }
 
@@ -808,41 +690,34 @@ export async function getUserOrders() {
    ========================= */
 
 export async function getAdminListings(params) {
-  if (isMockListingsEnabled()) {
-    const base = loadMockListings();
-    const listings = base?.data?.listings || [];
-    return {
-      success: true,
-      data: {
-        listings,
-        total: listings.length,
-        page: params?.page || 1,
-        limit: params?.limit || 50,
-      },
-    };
-  }
-  const res = await api.get(apiPath("/admin/listings"), { params });
-  return res.data;
+  // Always use mock - no API calls
+  const base = loadMockListings();
+  const listings = base?.data?.listings || [];
+  return {
+    success: true,
+    data: {
+      listings,
+      total: listings.length,
+      page: params?.page || 1,
+      limit: params?.limit || 50,
+    },
+  };
 }
 
 export async function adminSetListingStatus(id, status) {
-  if (isMockListingsEnabled()) {
-    const base = loadMockListings();
-    const listings = base?.data?.listings || [];
-    const idx = listings.findIndex((l) => String(l.id || l._id) === String(id));
-    if (idx === -1) return { success: false, message: "Not found" };
-    listings[idx] = { ...listings[idx], status };
-    saveMockListings(listings);
-    return { success: true, data: { listing: listings[idx] } };
-  }
-  const res = await api.patch(apiPath(`/admin/listings/${id}/status`), {
-    status,
-  });
-  return res.data;
+  // Always use mock - no API calls
+  const base = loadMockListings();
+  const listings = base?.data?.listings || [];
+  const idx = listings.findIndex((l) => String(l.id || l._id) === String(id));
+  if (idx === -1) return { success: false, message: "Not found" };
+  listings[idx] = { ...listings[idx], status };
+  saveMockListings(listings);
+  return { success: true, data: { listing: listings[idx] } };
 }
 
 export async function getAdminUsers(params) {
-  if (isMockUsersEnabled()) {
+  // Always use mock - no API calls
+  {
     // Combine default admin users with signup users
     const base = safeGetItem("mock_admin_users", mockAdminUsers);
     const defaultUsers = base?.data?.users || [];
@@ -891,15 +766,12 @@ export async function getAdminUsers(params) {
     };
   }
   
-  const res = await api.get(apiPath("/admin/users"), { params });
-  return res.data;
+  // Never reach here - mock mode is always enabled
+  return { success: true, data: { users: [], total: 0 } };
 }
 
 export async function adminCreateUser(body) {
-  if (!isMockUsersEnabled()) {
-    const res = await api.post(apiPath("/admin/users"), body);
-    return res.data;
-  }
+  // Always use mock - no API calls
   const base = safeGetItem("mock_admin_users", mockAdminUsers);
   const users = base?.data?.users || [];
   const nextId = users.reduce((m, u) => Math.max(m, Number(u.id) || 0), 0) + 1;
@@ -926,10 +798,7 @@ export async function adminCreateUser(body) {
 }
 
 export async function adminUpdateUser(id, body) {
-  if (!isMockUsersEnabled()) {
-    const res = await api.patch(apiPath(`/admin/users/${id}`), body);
-    return res.data;
-  }
+  // Always use mock - no API calls
   const base = safeGetItem("mock_admin_users", mockAdminUsers);
   const users = base?.data?.users || [];
   const idx = users.findIndex((u) => Number(u.id) === Number(id));
@@ -944,10 +813,7 @@ export async function adminUpdateUser(id, body) {
 }
 
 export async function adminDeleteUser(id) {
-  if (!isMockUsersEnabled()) {
-    const res = await api.delete(apiPath(`/admin/users/${id}`));
-    return res.data;
-  }
+  // Always use mock - no API calls
   const base = safeGetItem("mock_admin_users", mockAdminUsers);
   const users = base?.data?.users || [];
   const nextUsers = users.filter((u) => Number(u.id) !== Number(id));
@@ -973,30 +839,13 @@ export const DEFAULT_MOVING_HEADER_FONT_CONFIG = {
 };
 
 export async function getMovingHeaderSettings() {
-  if (isMockEnabled()) {
-    return loadLocalMovingHeader();
-  }
-  
-  try {
-    const res = await api.get(apiPath("/public/site/moving-header"));
-    return res.data;
-  } catch (err) {
-    // Silently fallback to local storage
-    return loadLocalMovingHeader();
-  }
+  // Always use mock - no API calls
+  return loadLocalMovingHeader();
 }
 
 export async function getAdminMovingHeaderSettings() {
-  if (isMockEnabled()) {
-    return loadLocalMovingHeader();
-  }
-  
-  try {
-    const res = await api.get(apiPath("/admin/site/moving-header"));
-    return res.data;
-  } catch {
-    return loadLocalMovingHeader();
-  }
+  // Always use mock - no API calls
+  return loadLocalMovingHeader();
 }
 
 const MOVING_HEADER_KEY = "site_moving_header_v1";
@@ -1087,18 +936,9 @@ export async function updateMovingHeaderSettings(payload) {
     return next;
   }
   
-  try {
-    const res = await api.put(apiPath("/admin/site/moving-header"), payload);
-    // Also save to localStorage as backup
-    if (res.data) {
-      saveLocalMovingHeader({ success: true, data: res.data });
-    }
-    return res.data || next;
-  } catch {
-    // Fallback to localStorage
-    saveLocalMovingHeader(next);
-    return next;
-  }
+  // Always use mock - no API calls
+  saveLocalMovingHeader(next);
+  return next;
 }
 
 const HERO_KEY = "site_hero_slides_v1";
@@ -1194,32 +1034,13 @@ function saveLocalHeroSlides(payload) {
 }
 
 export async function getHeroSlides() {
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    return loadLocalHeroSlides();
-  }
-  
-  try {
-    const res = await api.get(apiPath("/public/site/hero-slides"));
-    return res.data;
-  } catch (err) {
-    // Silently fallback to local slides
-    return loadLocalHeroSlides();
-  }
+  // Always use mock - no API calls
+  return loadLocalHeroSlides();
 }
 
 export async function adminGetHeroSlides() {
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    return loadLocalHeroSlides();
-  }
-  
-  try {
-    const res = await api.get(apiPath("/admin/site/hero-slides"));
-    return res.data;
-  } catch {
-    return loadLocalHeroSlides();
-  }
+  // Always use mock - no API calls
+  return loadLocalHeroSlides();
 }
 
 export async function adminAddHeroSlide({ file, durationSeconds }) {
@@ -1254,89 +1075,58 @@ export async function adminAddHeroSlide({ file, durationSeconds }) {
     return payload;
   }
   
-  const fd = new FormData();
-  fd.append("photo", file);
-  fd.append("durationSeconds", String(durationSeconds ?? 5));
-  try {
-    const res = await api.post(apiPath("/admin/site/hero-slides"), fd);
-    return res.data;
-  } catch {
-    const base = loadLocalHeroSlides();
-    const slides = base?.data?.slides || [];
-    
-    // Convert file to base64 for persistence
-    let imageBase64 = "";
-    if (file) {
-      try {
-        const reader = new FileReader();
-        imageBase64 = await new Promise((resolve, reject) => {
-          reader.onload = (e) => resolve(e.target.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-      } catch (error) {
-        console.error("Failed to convert hero slide image to base64:", error);
-        // Fallback to empty string
-      }
+  // Always use mock - no API calls
+  const base = loadLocalHeroSlides();
+  const slides = base?.data?.slides || [];
+  
+  // Convert file to base64 for persistence
+  let imageBase64 = "";
+  if (file) {
+    try {
+      const reader = new FileReader();
+      imageBase64 = await new Promise((resolve, reject) => {
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    } catch (error) {
+      console.error("Failed to convert hero slide image to base64:", error);
+      // Fallback to empty string
     }
-    
-    const next = {
-      id: `hero-${Date.now()}`,
-      url: imageBase64, // base64 data URL for persistence
-      durationSeconds: durationSeconds ?? 5,
-      durationMs: (durationSeconds ?? 5) * 1000,
-    };
-    const payload = { success: true, data: { slides: [...slides, next] } };
-    return saveLocalHeroSlides(payload);
   }
+  
+  const next = {
+    id: `hero-${Date.now()}`,
+    url: imageBase64, // base64 data URL for persistence
+    durationSeconds: durationSeconds ?? 5,
+    durationMs: (durationSeconds ?? 5) * 1000,
+  };
+  const payload = { success: true, data: { slides: [...slides, next] } };
+  return saveLocalHeroSlides(payload);
 }
 
 export async function adminUpdateHeroSlides(payload) {
-  if (isMockEnabled()) {
-    const slides = payload?.slides || payload?.data?.slides || [];
-    // Ensure slides have durationMs
-    const normalizedSlides = slides.map(s => ({
-      ...s,
-      durationMs: s.durationMs || (s.durationSeconds ? s.durationSeconds * 1000 : 6000),
-      durationSeconds: s.durationSeconds || (s.durationMs ? s.durationMs / 1000 : 6),
-    }));
-    const next = { success: true, data: { slides: normalizedSlides } };
-    saveLocalHeroSlides(next);
-    return next;
-  }
-  
-  try {
-    const res = await api.put(apiPath("/admin/site/hero-slides"), payload);
-    return res.data;
-  } catch {
-    const base = loadLocalHeroSlides();
-    const slides = payload?.slides || payload?.data?.slides || [];
-    const next = { success: true, data: { slides } };
-    return saveLocalHeroSlides(next);
-  }
+  // Always use mock - no API calls
+  const slides = payload?.slides || payload?.data?.slides || [];
+  // Ensure slides have durationMs
+  const normalizedSlides = slides.map(s => ({
+    ...s,
+    durationMs: s.durationMs || (s.durationSeconds ? s.durationSeconds * 1000 : 6000),
+    durationSeconds: s.durationSeconds || (s.durationMs ? s.durationMs / 1000 : 6),
+  }));
+  const next = { success: true, data: { slides: normalizedSlides } };
+  saveLocalHeroSlides(next);
+  return next;
 }
 
 export async function adminDeleteHeroSlide(id) {
-  if (isMockEnabled()) {
-    const base = loadLocalHeroSlides();
-    const slides = base?.data?.slides || [];
-    const filtered = slides.filter(s => String(s.id) !== String(id));
-    const next = { success: true, data: { slides: filtered } };
-    saveLocalHeroSlides(next);
-    return next;
-  }
-  
-  try {
-    const res = await api.delete(apiPath(`/admin/site/hero-slides/${id}`));
-    return res.data;
-  } catch {
-    const base = loadLocalHeroSlides();
-    const slides = (base?.data?.slides || []).filter(
-      (s) => String(s.id || s._id) !== String(id)
-    );
-    const next = { success: true, data: { slides } };
-    return saveLocalHeroSlides(next);
-  }
+  // Always use mock - no API calls
+  const base = loadLocalHeroSlides();
+  const slides = base?.data?.slides || [];
+  const filtered = slides.filter(s => String(s.id) !== String(id));
+  const next = { success: true, data: { slides: filtered } };
+  saveLocalHeroSlides(next);
+  return next;
 }
 
 /* =========================
@@ -1407,35 +1197,13 @@ function saveLocalCta(payload) {
 }
 
 export async function getCtaSettings() {
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    return { success: true, data: { cta: loadLocalCta() } };
-  }
-  
-  try {
-    const res = await api.get(apiPath("/public/site/cta"));
-    return res.data;
-  } catch (err) {
-    // Suppress 404 errors - these are expected if endpoint doesn't exist
-    if (err?.response?.status !== 404) {
-      console.error("getCtaSettings error:", err);
-    }
-    return { success: true, data: { cta: loadLocalCta() } };
-  }
+  // Always use mock - no API calls
+  return { success: true, data: { cta: loadLocalCta() } };
 }
 
 export async function adminGetCtaSettings() {
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    return { success: true, data: { cta: loadLocalCta() } };
-  }
-  
-  try {
-    const res = await api.get(apiPath("/admin/site/cta"));
-    return res.data;
-  } catch {
-    return { success: true, data: { cta: loadLocalCta() } };
-  }
+  // Always use mock - no API calls
+  return { success: true, data: { cta: loadLocalCta() } };
 }
 
 export async function adminUpdateCtaSettings(payload) {
@@ -1485,27 +1253,9 @@ export async function adminUpdateCtaSettings(payload) {
     Object.assign(next, ctaData);
   }
   
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    saveLocalCta(next);
-    return { success: true, data: { cta: next } };
-  }
-  
-  try {
-    const res = await api.put(
-      apiPath("/admin/site/cta"),
-      payload,
-      isFormData
-        ? { headers: { "Content-Type": "multipart/form-data" } }
-        : undefined
-    );
-    return res.data;
-  } catch (e) {
-    if (isFormData) throw e;
-    const next = { ...loadLocalCta(), ...(payload?.cta || payload || {}) };
-    saveLocalCta(next);
-    return { success: true, data: { cta: next } };
-  }
+  // Always use mock - no API calls
+  saveLocalCta(next);
+  return { success: true, data: { cta: next } };
 }
 
 function loadLocalFooter() {
@@ -1534,60 +1284,23 @@ function saveLocalFooter(payload) {
 }
 
 export async function getFooterSettings() {
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    return { success: true, data: { footer: loadLocalFooter() } };
-  }
-  
-  try {
-    const res = await api.get(apiPath("/public/site/footer"));
-    return res.data;
-  } catch (err) {
-    // Silently fallback to local footer
-    return { success: true, data: { footer: loadLocalFooter() } };
-  }
+  // Always use mock - no API calls
+  return { success: true, data: { footer: loadLocalFooter() } };
 }
 
 export async function adminGetFooterSettings() {
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    return { success: true, data: { footer: loadLocalFooter() } };
-  }
-  
-  try {
-    const res = await api.get(apiPath("/admin/site/footer"));
-    return res.data;
-  } catch {
-    return { success: true, data: { footer: loadLocalFooter() } };
-  }
+  // Always use mock - no API calls
+  return { success: true, data: { footer: loadLocalFooter() } };
 }
 
 export async function adminUpdateFooterSettings(payload) {
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    const next = {
-      ...loadLocalFooter(),
-      ...(payload?.footer || payload || {}),
-    };
-    saveLocalFooter(next);
-    return { success: true, data: { footer: next } };
-  }
-  
-  try {
-    const res = await api.put(apiPath("/admin/site/footer"), payload);
-    // Also save to localStorage as backup
-    if (res.data?.footer) {
-      saveLocalFooter(res.data.footer);
-    }
-    return res.data;
-  } catch {
-    const next = {
-      ...loadLocalFooter(),
-      ...(payload?.footer || payload || {}),
-    };
-    saveLocalFooter(next);
-    return { success: true, data: { footer: next } };
-  }
+  // Always use mock - no API calls
+  const next = {
+    ...loadLocalFooter(),
+    ...(payload?.footer || payload || {}),
+  };
+  saveLocalFooter(next);
+  return { success: true, data: { footer: next } };
 }
 
 /* =========================
@@ -1636,32 +1349,13 @@ function saveLocalLogo(payload) {
 }
 
 export async function getLogoSettings() {
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    return { success: true, data: { logo: loadLocalLogo() } };
-  }
-  
-  try {
-    const res = await api.get(apiPath("/public/site/logo"));
-    return res.data;
-  } catch (err) {
-    // Silently fallback to local logo - don't spam console
-    return { success: true, data: { logo: loadLocalLogo() } };
-  }
+  // Always use mock - no API calls
+  return { success: true, data: { logo: loadLocalLogo() } };
 }
 
 export async function adminGetLogoSettings() {
-  // In mock mode, always use localStorage
-  if (isMockEnabled()) {
-    return { success: true, data: { logo: loadLocalLogo() } };
-  }
-  
-  try {
-    const res = await api.get(apiPath("/admin/site/logo"));
-    return res.data;
-  } catch {
-    return { success: true, data: { logo: loadLocalLogo() } };
-  }
+  // Always use mock - no API calls
+  return { success: true, data: { logo: loadLocalLogo() } };
 }
 
 export async function adminUpdateLogoSettings(formData) {
@@ -1710,18 +1404,9 @@ export async function adminUpdateLogoSettings(formData) {
     return { success: true, data: { logo: next } };
   }
   
-  try {
-    const res = await api.put(apiPath("/admin/site/logo"), formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    return res.data;
-  } catch {
-    const current = loadLocalLogo();
-    const next = { ...current };
-    // Note: Can't save files to localStorage, so this is just for structure
-    saveLocalLogo(next);
-    return { success: true, data: { logo: next } };
-  }
+  // Never reach here - mock mode always enabled
+  // This code is unreachable but kept for structure
+  return { success: false, message: "Mock mode only" };
 }
 
 /* =========================
@@ -1729,9 +1414,6 @@ export async function adminUpdateLogoSettings(formData) {
    ========================= */
 
 export async function getAuditClicks(params) {
-  if (!isMockEnabled()) {
-    const res = await api.get(apiPath("/admin/audit/clicks"), { params });
-    return res.data;
-  }
+  // Always use mock - no API calls
   return mockAuditClicks;
 }

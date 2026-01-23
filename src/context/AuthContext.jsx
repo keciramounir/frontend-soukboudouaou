@@ -107,27 +107,8 @@ export function AuthProvider({ children }) {
       return { success: true, user: newUser };
     }
     
-    try {
-      const res = await api.post("/auth/signup", {
-        username,
-        email,
-        password,
-        fullName,
-        wilaya,
-      });
-
-      const { user: userData, token: jwt, refreshToken } = res.data;
-      saveSession(userData, jwt, refreshToken);
-
-      return { success: true, user: userData };
-    } catch (err) {
-      console.error("signup error:", err);
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Signup failed. Try again.";
-      return { success: false, message: msg };
-    }
+    // Never reach here - mock mode always enabled
+    return { success: false, message: "Mock mode only" };
   };
 
   const login = async ({ identifier, password }) => {
@@ -273,55 +254,24 @@ export function AuthProvider({ children }) {
       };
     }
     
-    try {
-      const res = await api.post("/auth/login", { identifier, password });
-      const { user: userData, token: jwt, refreshToken } = res.data;
-
-      saveSession(userData, jwt, refreshToken);
-      return { success: true, user: userData };
-    } catch (err) {
-      // Only log non-400 errors (400 means invalid credentials, which is expected)
-      if (err?.response?.status !== 400) {
-        console.error("login error:", err);
-      }
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Login failed. Check your credentials.";
-      return { success: false, message: msg };
-    }
+    // Never reach here - mock mode always enabled
+    return { success: false, message: "Mock mode only" };
   };
 
   const requestEmailVerification = async (email) => {
-    try {
-      const res = await api.post("/auth/verify-email/request", { email });
-      return {
-        success: res.data?.success !== false,
-        message: res.data?.message || "Email sent.",
-      };
-    } catch (err) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to send verification email.";
-      return { success: false, message: msg };
-    }
+    // Always use mock - no API calls
+    return {
+      success: true,
+      message: "Email de vérification envoyé (mode mock).",
+    };
   };
 
   const confirmEmailVerification = async ({ email, token }) => {
-    try {
-      const res = await api.post("/auth/verify-email/confirm", { email, token });
-      return {
-        success: res.data?.success !== false,
-        message: res.data?.message || "Email verified.",
-      };
-    } catch (err) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Verification failed.";
-      return { success: false, message: msg };
-    }
+    // Always use mock - no API calls
+    return {
+      success: true,
+      message: "Email vérifié avec succès (mode mock).",
+    };
   };
 
   const forgotPassword = async (email) => {
@@ -370,20 +320,8 @@ export function AuthProvider({ children }) {
       };
     }
     
-    try {
-      const res = await api.post("/auth/forgot-password", { email });
-      return {
-        success: res.data?.success !== false,
-        message: res.data?.message || "If an account exists, OTP was sent.",
-      };
-    } catch (err) {
-      console.error("forgotPassword error:", err);
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to send OTP. Try again.";
-      return { success: false, message: msg };
-    }
+    // Never reach here - mock mode always enabled
+    return { success: false, message: "Mock mode only" };
   };
 
   const verifyOtp = async (email, otp) => {
@@ -425,20 +363,8 @@ export function AuthProvider({ children }) {
       };
     }
     
-    try {
-      const res = await api.post("/auth/verify-otp", { email, otp });
-      return {
-        success: res.data?.success !== false,
-        message: res.data?.message || "OTP verified.",
-      };
-    } catch (err) {
-      console.error("verifyOtp error:", err);
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "OTP verification failed.";
-      return { success: false, message: msg };
-    }
+    // Never reach here - mock mode always enabled
+    return { success: false, message: "Mock mode only" };
   };
 
   const resetPassword = async ({ email, otp, password }) => {
@@ -504,24 +430,8 @@ export function AuthProvider({ children }) {
       };
     }
     
-    try {
-      const res = await api.post("/auth/reset-password", {
-        email,
-        otp,
-        password,
-      });
-      return {
-        success: res.data?.success !== false,
-        message: res.data?.message || "Password updated.",
-      };
-    } catch (err) {
-      console.error("resetPassword error:", err);
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "Reset failed. Try again.";
-      return { success: false, message: msg };
-    }
+    // Never reach here - mock mode always enabled
+    return { success: false, message: "Mock mode only" };
   };
 
   const updateUser = (newData) => {
@@ -530,11 +440,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    try {
-      await api.post("/auth/logout");
-    } catch (err) {
-      void err;
-    }
+    // Always use mock - no API calls
     setUser(null);
     setToken("");
     safeRemoveItem("user");
